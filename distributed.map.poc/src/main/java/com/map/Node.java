@@ -1,21 +1,74 @@
 package com.map;
 
+import java.util.ArrayList;
 import java.util.List;
 
-public class Node<K, V> {
+public class Node {
 
-	int id;
+	private int id;
 	
-	List<Node<K, V>> nodes;
+	List<Node> nodes;
 	
 	PartitionTable pt;
 	
-	List<Partition<K, V>> primaryData;
+	private List<Partition> primaryData = new ArrayList<>();
 	
-	List<Partition<K, V>> secondaryData;
+	private List<Partition> secondaryData = new ArrayList<>();
 	
 	Scheduler scheduler;
 	
+	public Node(int id) {
+		this.id = id;
+	}
+	
+	public int getId() {
+		return id;
+	}
+	
+//	public int getPrimaryPartitionsCount() {
+//		return this.primaryData.size();
+//	}
+//	
+//	public int getSecondaryPartitionsCount() {
+//		return this.secondaryData.size();
+//	}
+	
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj) {
+			return true;
+		}		
+		if (obj instanceof Node) {
+			Node n = (Node) obj;
+			return this.id == n.getId();					
+		}		
+		return false;
+	}
+	
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + id;
+		return result;
+	}
+	
+	@Override
+	public String toString() {	
+		return String.valueOf(this.id);
+	}
+	
+	public List<Partition> getData(boolean isPrimary) {
+		return isPrimary ? this.primaryData : this.secondaryData;
+	}
+	
+	public List<Partition> getPrimaryData() {
+		return primaryData;
+	}
+	
+	public List<Partition> getSecondaryData() {
+		return secondaryData;
+	}
 	
 	//---------------- Client operations: start
 	
@@ -25,17 +78,17 @@ public class Node<K, V> {
 		return 0;
 	}
 	
-	public V get(Object key) {
+	public Object get(Object key) {
 		//TODO
 		return null;
 	}
 	
-	public V put(K key, V value) {
+	public Object put(Object key, Object value) {
 		//TODO
 		return null;		
 	}
 	
-	public V remove(Object key) {
+	public Object remove(Object key) {
 		//TODO
 		return null;
 	}
@@ -50,5 +103,10 @@ public class Node<K, V> {
 	
 	private void discoveryNodes() {
 		//TODO
+	}
+
+	public void addPrimaryPartition(Partition part) {
+		this.primaryData.add(part);
+		
 	}
 }
