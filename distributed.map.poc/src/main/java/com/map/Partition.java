@@ -9,6 +9,8 @@ public class Partition {
 	
 	private Map data = new HashMap<>();
 	
+	//TODO: add status
+	
 	public Partition(int id) {
 		this.id = id;	
 	}

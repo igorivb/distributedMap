@@ -1,15 +1,24 @@
 package com.map;
 
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Node {
 
-	private int id;
+	enum NodeStatus { NORMAL, DELETED }
 	
-	List<Node> nodes;
+	//Use enum instead of boolean to indicate primary and secondary for better code readability.
+	enum NodeSection { PRIMARY, SECONDARY }
 	
-	PartitionTable pt;
+	
+	private final int id;
+	
+	private final InetAddress address;
+	
+	private NodeStatus status;
+	
+	private PartitionTable pt;
 	
 	private List<Partition> primaryData = new ArrayList<>();
 	
@@ -17,12 +26,18 @@ public class Node {
 	
 	Scheduler scheduler;
 	
-	public Node(int id) {
+	public Node(int id, InetAddress address) {
 		this.id = id;
+		this.address = address;
+		this.status = NodeStatus.NORMAL;
 	}
 	
 	public int getId() {
 		return id;
+	}
+	
+	public void setPartitionTable(PartitionTable pt) {
+		this.pt = pt;
 	}
 	
 //	public int getPrimaryPartitionsCount() {
@@ -55,11 +70,11 @@ public class Node {
 	
 	@Override
 	public String toString() {	
-		return String.valueOf(this.id);
+		return String.format("%d - %s, primary: %s, secondary: %s", id, status, this.primaryData.size(), this.secondaryData.size());
 	}
 	
-	public List<Partition> getData(boolean isPrimary) {
-		return isPrimary ? this.primaryData : this.secondaryData;
+	public List<Partition> getData(NodeSection section) {
+		return section == NodeSection.PRIMARY ? this.primaryData : this.secondaryData;
 	}
 	
 	public List<Partition> getPrimaryData() {
@@ -105,8 +120,27 @@ public class Node {
 		//TODO
 	}
 
-	public void addPrimaryPartition(Partition part) {
-		this.primaryData.add(part);
+	public void addPartition(NodeSection section, Partition partition) {
+		PartitionTableEntry ptEntry = pt.getEntryForPartition(partition.getId());
 		
+		if (section == NodeSection.PRIMARY) {
+			this.primaryData.add(partition);
+			ptEntry.setPrimaryNode(this);
+		} else {
+			this.secondaryData.add(partition);
+			ptEntry.addSecondaryNode(this);
+		}				
+	}
+	
+	public void removePartition(NodeSection section, Partition partition) {
+		PartitionTableEntry ptEntry = pt.getEntryForPartition(partition.getId());
+		
+		if (section == NodeSection.PRIMARY) {
+			this.primaryData.remove(partition);
+			ptEntry.removePrimaryNode();
+		} else {
+			this.secondaryData.remove(partition);
+			ptEntry.removeSecondaryNode(this);
+		}				
 	}
 }
