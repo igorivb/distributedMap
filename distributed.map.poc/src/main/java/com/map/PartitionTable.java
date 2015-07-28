@@ -18,7 +18,7 @@ public class PartitionTable {
 	
 	private Map<Integer, PartitionTableEntry> partitionEntries;
 	
-	//nodes in cluster
+	//nodes in cluster: all nodes, including removed
 	private Map<Integer, Node> nodes;
 	
 	public PartitionTable(int replicationFactor, int partitionsCount) {
@@ -42,6 +42,9 @@ public class PartitionTable {
 		return partitionsCount;
 	}
 	
+	/**
+	 * Return all nodes, including removed.
+	 */
 	public Collection<Node> getNodes() {
 		return this.nodes.values();
 	}
@@ -59,6 +62,10 @@ public class PartitionTable {
 		return this.partitionEntries.get(partitionId);
 	}
 	
+	public Map<Integer, PartitionTableEntry> getPartitionEntries() {
+		return partitionEntries;
+	}
+	
 	public boolean hasReplica() {
 		return this.replicationFactor > 0;
 	}
@@ -68,12 +75,12 @@ public class PartitionTable {
 		return null;
 	}
 	
-	public Node getPrimaryNodeForPartition(Partition partition) {
+	public Node getPrimaryNodeForPartition(int partitionId) {
 		//TODO
 		return null;
 	}
 	
-	public Node[] getSecondaryNodesForPartition(Partition partition) {
+	public List<Node> getSecondaryNodesForPartition(int partitionId) {
 		//TODO
 		return null;
 	}
@@ -100,5 +107,9 @@ public class PartitionTable {
 		}
 		
 		System.out.println();		
+	}
+
+	public void markNodeAsDeleted(Node node) {
+		node.markDeleted();		
 	}
 }

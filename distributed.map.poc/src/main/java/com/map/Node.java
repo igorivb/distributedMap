@@ -4,6 +4,8 @@ import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.map.Node.NodeSection;
+
 public class Node {
 
 	enum NodeStatus { NORMAL, DELETED }
@@ -69,7 +71,7 @@ public class Node {
 	
 	@Override
 	public String toString() {	
-		return String.format("%d - %s, primary: %s, secondary: %s", id, status, this.primaryData.size(), this.secondaryData.size());
+		return String.format("%d, primary: %s, secondary: %s", id, this.primaryData.size(), this.secondaryData.size());
 	}
 	
 	public List<Partition> getData(NodeSection section) {
@@ -133,5 +135,15 @@ public class Node {
 		} else {
 			this.secondaryData.remove(partition);
 		}				
+	}
+
+	public void markDeleted() {
+		this.status = NodeStatus.DELETED;
+	}
+
+	public Partition createPartition(NodeSection section, int partitionId) {
+		Partition part = new Partition(partitionId);
+		getData(section).add(part);
+		return part;
 	}
 }
