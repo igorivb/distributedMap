@@ -76,13 +76,12 @@ public class PartitionTable {
 	}
 	
 	public Node getPrimaryNodeForPartition(int partitionId) {
-		//TODO
-		return null;
+		return this.partitionEntries.get(partitionId).getPrimaryNode();
 	}
 	
 	public List<Node> getSecondaryNodesForPartition(int partitionId) {
-		//TODO
-		return null;
+		PartitionTableEntry entry = this.partitionEntries.get(partitionId);
+		return new ArrayList<>(entry.getSecondaryNodes());
 	}
 	
 	@Override
@@ -111,5 +110,14 @@ public class PartitionTable {
 
 	public void markNodeAsDeleted(Node node) {
 		node.markDeleted();		
+	}
+
+	/*
+	 * Delete nodes from all tables and lists.
+	 */
+	public void deleteNodes(List<Node> deletedNodes) {
+		for (Node deletedNode : deletedNodes) {
+			nodes.remove(deletedNode.getId()); 
+		}		
 	}
 }

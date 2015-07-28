@@ -41,6 +41,10 @@ public class Node {
 		this.pt = pt;
 	}
 	
+	public boolean isDeleted() {
+		return this.status == NodeStatus.DELETED;
+	}
+	
 //	public int getPrimaryPartitionsCount() {
 //		return this.primaryData.size();
 //	}
@@ -71,7 +75,11 @@ public class Node {
 	
 	@Override
 	public String toString() {	
-		return String.format("%d, primary: %s, secondary: %s", id, this.primaryData.size(), this.secondaryData.size());
+		return String.valueOf(this.id);
+	}
+		
+	public String toStringWithSizes() {	
+		return String.format("%d: {primary: %s, secondary: %s}", id, this.primaryData.size(), this.secondaryData.size());
 	}
 	
 	public List<Partition> getData(NodeSection section) {

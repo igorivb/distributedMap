@@ -93,9 +93,7 @@ public class Cluster {
 				
 		if (added) {			
 			logger.info("Added new node to nodes list: {}", newNode.getId());
-		}
-				
-		printAndCheckPartitions();
+		}						
 	}
 	
 	/**
@@ -117,8 +115,8 @@ public class Cluster {
 		processRemoveSecondary(deletedNodes);
 		
 		balanceRemoveNodes(deletedNodes);
-		
-		//TODO: delete nodes from all tables
+				
+		pt.deleteNodes(deletedNodes);
 	}
 	
 	/*
@@ -139,7 +137,8 @@ public class Cluster {
 			Collections.sort(sortedNodes, nodesCmp);
 			
 			//find nodes which contain deleted partition
-			List<Node> secNodes = pt.getSecondaryNodesForPartition(deletedPrimaryPart);
+			List<Node> secNodes = excludeDeletedNodes(pt.getSecondaryNodesForPartition(deletedPrimaryPart));
+			
 			logger.debug("Secondary nodes which contain deleted partition: {}, nodes: {}", deletedPrimaryPart, secNodes);
 			if (!secNodes.isEmpty()) {
 				Node replicaNode = secNodes.get(0); //take first one
@@ -158,6 +157,16 @@ public class Cluster {
 				pt.getEntryForPartition(part.getId()).setPrimaryNode(targetNode);
 			}
 		}
+	}
+	
+	private List<Node> excludeDeletedNodes(List<Node> nodes) {
+		List<Node> res = new ArrayList<>();
+		for (Node node : nodes) {
+			if (!node.isDeleted()) {
+				res.add(node);
+			}
+		}
+		return res;
 	}
 	
 	private List<Integer> getDeletedPrimaryPartitions(List<Node> deletedNodes) {
@@ -179,85 +188,6 @@ public class Cluster {
 
 	private void processRemoveSecondary(List<Node> nodesToDelete) {
 		//TODO: implement		
-	}
-
-	//for debug
-	private void printAndCheckPartitions() {
-		System.out.println();
-		System.out.printf("  id | primary | secondary%n");		
-		
-		int primaryTotal = 0, secondaryTotal = 0;
-		int minPrimary = Integer.MAX_VALUE, maxPrimary = Integer.MIN_VALUE;
-		int minSecond = Integer.MAX_VALUE, maxSecond = Integer.MIN_VALUE;
-		
-		List<String> errors = new ArrayList<>();
-				
-		for (Node n : pt.getNodes()) {
-			System.out.printf("%4d | %7d | %9d%n", n.getId(), n.getPrimaryData().size(), n.getSecondaryData().size());
-			primaryTotal += n.getPrimaryData().size();
-			secondaryTotal += n.getSecondaryData().size();
-			
-			minPrimary = Math.min(minPrimary, n.getPrimaryData().size());
-			maxPrimary = Math.max(maxPrimary, n.getPrimaryData().size());
-			
-			minSecond = Math.min(minSecond, n.getSecondaryData().size());
-			maxSecond = Math.max(maxSecond, n.getSecondaryData().size());
-			
-			//check collisions
-			for (Partition p : n.getSecondaryData()) {
-				if (n.getPrimaryData().contains(p)) {
-					errors.add(String.format("Secondary and primary collide for node: %s", n.getId()));
-				}
-			}	
-			
-			//duplicates
-			if (n.getPrimaryData().size() != new HashSet<>(n.getPrimaryData()).size()) {
-				errors.add("There are duplicates in primary: " + n.getId());
-			}
-			if (n.getSecondaryData().size() != new HashSet<>(n.getSecondaryData()).size()) {
-				errors.add("There are duplicates in secondary: " + n.getId());
-			}
-		}		
-		System.out.println();
-		
-		System.out.println("----- Details: -----");		
-		for (Node n : pt.getNodes()) {
-			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getId(), n.getPrimaryData(), n.getSecondaryData());
-		}
-		
-		System.out.println();
-		
-		System.out.println("----- Partition Table: -----");
-		pt.printDebug();
-		
-		System.out.println();
-		
-		if (primaryTotal != pt.getPartitionsSize()) {
-			errors.add(String.format("Primary total is not correct. Expected: %d, was: %d", pt.getPartitionsSize(), primaryTotal));
-		}
-		
-		if (pt.hasReplica()) {
-			int secExpected = (pt.getNodesSize() > pt.getReplicationFactor() ? pt.getReplicationFactor() : pt.getNodesSize() - 1) * pt.getPartitionsSize();
-			if (secondaryTotal != secExpected) {
-				errors.add(String.format("Secondary total is not correct. Expected: %d, was: %d", secExpected, secondaryTotal));
-			}							
-		} else if (secondaryTotal > 0) {
-			errors.add("Secondary total is not empty: " + secondaryTotal);
-		}				
-		
-		if (maxPrimary - minPrimary > 1) {
-			errors.add("Big difference between primaries: " + (maxPrimary - minPrimary));
-		}
-		if (pt.hasReplica()) {
-			if (maxSecond - minSecond > 1) {
-				errors.add("Big difference between secondaries: " + (maxPrimary - minPrimary));
-			}
-		}
-		
-		
-		if (!errors.isEmpty()) {
-			throw new RuntimeException("Found errors: " + errors);
-		}
 	}
 	
 	private void processAddSecondary(Node newNode, boolean isBalanced, List<Partition> primaryPartitions) {				
@@ -426,5 +356,9 @@ public class Cluster {
 			Partition p = newNode.createPartition(NodeSection.PRIMARY, i);
 			pt.getEntryForPartition(p.getId()).setPrimaryNode(newNode);
 		}					
-	}		
+	}
+	
+	public PartitionTable getPartitionTable() {
+		return pt;
+	}
 }
