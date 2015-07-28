@@ -1,6 +1,7 @@
 package com.map;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -71,10 +72,10 @@ public class Cluster {
 		} else {			
 			logger.info("Is balanced: {}", isBalanced);
 			
-			List<Partition> primaryPartitions = processPrimary(newNode, isBalanced);
+			List<Partition> primaryPartitions = processAddPrimary(newNode, isBalanced);
 			
 			if (pt.hasReplica()) {
-				processSecondary(newNode, isBalanced, primaryPartitions);
+				processAddSecondary(newNode, isBalanced, primaryPartitions);
 			}
 		}	
 				
@@ -89,7 +90,7 @@ public class Cluster {
 	 * Allows to delete multiple nodes at a time.
 	 */
 	public void removeNodes(List<Node> nodes) {
-		//TODO
+		//TODO: implement
 	}
 	
 	private void printAndCheckPartitions() {
@@ -130,14 +131,14 @@ public class Cluster {
 		}		
 		System.out.println();
 		
-		System.out.println("Details:");
+		System.out.println("----- Details: -----");		
 		for (Node n : pt.getNodes()) {
-			System.out.printf("%4d. primary: %s, secondary: %s%n ", n.getId(), n.getPrimaryData(), n.getSecondaryData());
+			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getId(), n.getPrimaryData(), n.getSecondaryData());
 		}
 		
 		System.out.println();
 		
-		System.out.println("Partition Table:");
+		System.out.println("----- Partition Table: -----");
 		pt.printDebug();
 		
 		System.out.println();
@@ -170,7 +171,7 @@ public class Cluster {
 		}
 	}
 	
-	private void processSecondary(Node newNode, boolean isBalanced, List<Partition> primaryPartitions) {				
+	private void processAddSecondary(Node newNode, boolean isBalanced, List<Partition> primaryPartitions) {				
 		if (isBalanced) {									
 			int num = (pt.getPartitionsSize() * pt.getReplicationFactor()) / pt.getNodesSize(); //ignore remaining part of division
 			logger.debug("Processing secondary: balanced, num: {}", num);
@@ -178,7 +179,7 @@ public class Cluster {
 			Set<Partition> addedParts = new HashSet<>(primaryPartitions); 
 			
 			//sort nodes by secondaryData.len desc
-			List<Node> sortedNodes = new ArrayList<>(pt.getNodes());			
+			List<Node> sortedNodes = getNodes(Arrays.asList(newNode));			
 									
 			for (int i = 0; i < num;) {	
 				if (sortedNodes.isEmpty()) {
@@ -213,7 +214,7 @@ public class Cluster {
 			logger.debug("Processing secondary: not balanced");
 			
 			//copy all primary to new node's secondary
-			for (Node node : pt.getNodes()) {
+			for (Node node : getNodes(Arrays.asList(newNode))) {
 				for (Partition part : node.getPrimaryData()) {
 					copyPartition(node, part, NodeSection.PRIMARY, newNode, NodeSection.SECONDARY);
 				}
@@ -221,14 +222,14 @@ public class Cluster {
 		}				
 	}	
 
-	private List<Partition> processPrimary(Node newNode, boolean isBalanced) {								
+	private List<Partition> processAddPrimary(Node newNode, boolean isBalanced) {								
 		int num = pt.getPartitionsSize() / pt.getNodesSize(); //ignore remaining part of division
 		logger.debug("Processing primary, num: {}", num);
 		
 		List<Partition> primaryPartitions = new ArrayList<>();
 		
-		//sort nodes by primaryData.len desc
-		List<Node> sortedNodes = new ArrayList<>(pt.getNodes());		
+		//sort nodes by primaryData.len desc		
+		List<Node> sortedNodes = getNodes(Arrays.asList(newNode));
 		
 		for (int i = 0; i < num; i ++) {
 			Collections.sort(sortedNodes, primaryNodesCmp);
@@ -249,26 +250,52 @@ public class Cluster {
 		}
 		return primaryPartitions;
 	}	
+	
+	private List<Node> getNodes(List<Node> exclude) {
+		List<Node> nodes = new ArrayList<>();
+		for (Node n : pt.getNodes()) {
+			if (!exclude.contains(n)) {
+				nodes.add(n);
+			}
+		}
+		return nodes;
+	}
 
 	private void copyPartition(Node src, Partition srcPart, NodeSection srcSection, Node dest, NodeSection destSection) {
-		transferPartition(true, src, srcPart, srcSection, dest, destSection);		
+		transferPartition(false, src, srcPart, srcSection, dest, destSection);		
 	}
 	
 	private void movePartition(Node src, Partition srcPart, NodeSection srcSection, Node dest, NodeSection destSection) {
-		transferPartition(false, src, srcPart, srcSection, dest, destSection);		
+		transferPartition(true, src, srcPart, srcSection, dest, destSection);		
 	}
 
-	private void transferPartition(boolean isCopy, Node src, Partition srcPart, NodeSection srcSection, Node dest, NodeSection destSection) {
-		logger.debug((isCopy ? "Copying" : "Moving") + 
+	private void transferPartition(boolean isMove, Node src, Partition srcPart, NodeSection srcSection, Node dest, NodeSection destSection) {
+		logger.debug((!isMove ? "Copying" : "Moving ") + 
 			" partition '{}' from '{}'.{} to '{}'.{}", 
 			srcPart.getId(), src.getId(), srcSection, dest.getId(), destSection);
 			
 		dest.addPartition(destSection, srcPart);
 		
-		if (!isCopy) { //delete from src			
-			//logger.debug("Deleting partition '{}' from {} node, isPrimary: {}", srcPart.getId(), src.getId(), isSrcPrimary);
-			
+		if (isMove) { //delete from src			
+			//logger.debug("Deleting partition '{}' from {} node, isPrimary: {}", srcPart.getId(), src.getId(), isSrcPrimary);			
 			src.removePartition(srcSection, srcPart);			
+		}	
+		
+		//update partition table
+		PartitionTableEntry ptEntry = pt.getEntryForPartition(srcPart.getId());
+		
+		if (isMove) {			
+			if (srcSection == NodeSection.PRIMARY) {		
+				ptEntry.removePrimaryNode(src);
+			} else {
+				ptEntry.removeSecondaryNode(src);
+			}
+		}				
+		
+		if (destSection == NodeSection.PRIMARY) {
+			ptEntry.setPrimaryNode(dest);
+		} else {
+			ptEntry.addSecondaryNode(dest);
 		}		
 	}
 
@@ -297,6 +324,8 @@ public class Cluster {
 		for (int i = 0; i < pt.getPartitionsSize(); i ++) { //create primary partitions				
 			Partition p = new Partition(i);
 			newNode.addPartition(NodeSection.PRIMARY, p);
+			
+			pt.getEntryForPartition(p.getId()).setPrimaryNode(newNode);
 		}					
 	}		
 }

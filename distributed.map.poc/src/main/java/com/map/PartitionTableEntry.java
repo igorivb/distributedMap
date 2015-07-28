@@ -20,11 +20,6 @@ public class PartitionTableEntry {
 	}
 	
 	public void setPrimaryNode(Node node) {
-		if (this.primaryNode != null) {
-			throw new RuntimeException(
-				String.format("Failed to set primary node for partition. Partition: %s, exists: %s, new: %s", 
-				this.partitionId, this.primaryNode.getId(), node.getId()));
-		}
 		this.primaryNode = node;		
 	}
 	
@@ -45,20 +40,34 @@ public class PartitionTableEntry {
 		return secondaryNodes;
 	}
 	
-	public void removePrimaryNode() {
-		if (this.primaryNode == null) {
-			throw new RuntimeException(
-				String.format("Failed to remove primary node from partition because it is null. Partition: %s", 
-				this.partitionId));
-		}
-		this.primaryNode = null;		
+	public void removePrimaryNode(Node node) {
+		/*
+		 * Remove entry only in case if nodes are the same.
+		 * E.g. they may not be the same if partition was previously copied to another node.
+		 */
+		if (this.primaryNode.equals(node)) {
+			this.primaryNode = null;			
+		}		
 	}
 	
 	public void removeSecondaryNode(Node node) {
-		if (!secondaryNodes.remove(node)) {
+		if (!secondaryNodes.remove(node)) { //check if it existed
 			throw new RuntimeException(
 				String.format("Failed to remove secondary node from partition because it doesn't exist. Partition: %s, node: %s", 
 				this.partitionId, node.getId()));
 		}		
+	}
+	
+	@Override
+	public String toString() {
+		List<Integer> sec = new ArrayList<>();
+		List<Node> secNodes = this.secondaryNodes;
+		for (Node secNode : secNodes) {
+			sec.add(secNode.getId());
+		} 
+		
+		return String.format(
+			"%s, primary: %s, secondary: %s", 
+			this.partitionId, this.primaryNode == null ? "<null>" : this.primaryNode.getId(), sec);
 	}
 }

@@ -11,7 +11,7 @@ public class SimpleAddTest {
 	@Test
 	public void testAddFirst() {
 		int partitionsCount = 13;
-		
+				
 		for (int replicationFactor = 0; replicationFactor < 7; replicationFactor ++) {		
 					
 			Cluster cluster = new Cluster(replicationFactor, partitionsCount);

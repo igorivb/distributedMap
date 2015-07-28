@@ -24,7 +24,6 @@ public class Node {
 	
 	private List<Partition> secondaryData = new ArrayList<>();
 	
-	Scheduler scheduler;
 	
 	public Node(int id, InetAddress address) {
 		this.id = id;
@@ -112,7 +111,7 @@ public class Node {
 	//---------------- Client operations: end
 	
 	
-	public void start(MapConfig conf) {
+	public void start() {
 		//TODO
 	}
 	
@@ -120,27 +119,19 @@ public class Node {
 		//TODO
 	}
 
-	public void addPartition(NodeSection section, Partition partition) {
-		PartitionTableEntry ptEntry = pt.getEntryForPartition(partition.getId());
-		
+	public void addPartition(NodeSection section, Partition partition) {				
 		if (section == NodeSection.PRIMARY) {
 			this.primaryData.add(partition);
-			ptEntry.setPrimaryNode(this);
 		} else {
-			this.secondaryData.add(partition);
-			ptEntry.addSecondaryNode(this);
+			this.secondaryData.add(partition);	
 		}				
 	}
 	
-	public void removePartition(NodeSection section, Partition partition) {
-		PartitionTableEntry ptEntry = pt.getEntryForPartition(partition.getId());
-		
+	public void removePartition(NodeSection section, Partition partition) {		
 		if (section == NodeSection.PRIMARY) {
 			this.primaryData.remove(partition);
-			ptEntry.removePrimaryNode();
 		} else {
 			this.secondaryData.remove(partition);
-			ptEntry.removeSecondaryNode(this);
 		}				
 	}
 }
