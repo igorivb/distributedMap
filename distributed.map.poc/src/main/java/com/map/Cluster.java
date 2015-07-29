@@ -99,11 +99,18 @@ public class Cluster {
 			logger.info("Added new node to nodes list: {}", newNode.getId());
 		}	
 		
-		checkClusterPartitions();
+		checkClusterPartitions(true);
 	}
 	
 	/**
 	 * Allows to delete multiple nodes at a time.
+	 * 
+	 * TODO: issues:
+	 *   0. processRemovePrimary and processRemoveSecondary create collisions between primary and secondary. Try to avoid ? 
+	 *   	There are possible local copies here.
+	 *   	Think about it when implementing 'balanceRemoveNodes'.
+	 *   
+	 *   1. junit test failures 
 	 */
 	public void removeNodes(List<Node> deletedNodes) {
 		logger.info("Removing nodes: {}", deletedNodes);
@@ -126,7 +133,8 @@ public class Cluster {
 				
 		pt.deleteNodes(deletedNodes);
 		
-		checkClusterPartitions();
+		//TODO: check also that there are no checkCollisions after implementing 'balanceRemoveNodes'
+		checkClusterPartitions(false);
 	}
 	
 	/*
@@ -163,46 +171,65 @@ public class Cluster {
 		}
 		
 		//restore secondary if needed
-		Set<Integer> deletedSecParts = this.getDeletedSecondaryPartitions(deletedNodes);
-		for (Integer deletedSecPart : deletedSecParts) {									
-			PartitionTableEntry entry = pt.getEntryForPartition(deletedSecPart);
-			int diff = currentRF - excludeDeletedNodes(entry.getSecondaryNodes()).size();
-			Collections.sort(targetNodes, secondaryNodesAscCmp);
+		for (Node deletedNode : deletedNodes) { //iterate nodes
+			Set<Integer> deletedSecParts = pt.getNodesSecondaryPartitions(Arrays.asList(deletedNode.getId()));
+			logger.debug("Restoring secondary partitions deleted on node: {}, partitions: {}", deletedNode.getId(), deletedSecParts);
 			
-			logger.debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
-			
-			if (diff == 0) { //need to restore ?
-				logger.debug("No need to restore secondary partition: {}", deletedSecPart);
-			} else {
-				Node primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart);
-				if (primaryNode != null) { //restore
-					for (int i = 0; i < diff; i ++) {
-						Node targetNode = targetNodes.get(i);						
-						copyPartition(primaryNode, deletedSecPart, NodeSection.PRIMARY, targetNode, NodeSection.SECONDARY);
-					}					
-				} else { //data loss
-					//create new secondary partition and register it in PartitionTable					
-					for (int i = 0; i < diff; i ++) {
-						Node targetNode = targetNodes.get(i);
-						logger.warn("Data are lost for secondary partition, create a new one, partition id: {}, target node id: {}", deletedSecPart, targetNode);						
-						targetNode.createPartition(NodeSection.SECONDARY, deletedSecPart);												
+			for (Integer deletedSecPart : deletedSecParts) { //iterate partitions								
+				PartitionTableEntry entry = pt.getEntryForPartition(deletedSecPart);
+				int diff = currentRF - excludeDeletedNodes(entry.getSecondaryNodes()).size();
+				Collections.sort(targetNodes, secondaryNodesAscCmp);
+				
+				logger.debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
+				
+				if (diff == 0) { //need to restore ?
+					logger.debug("No need to restore secondary partition: {}", deletedSecPart);
+				} else {
+					Node primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart);
+					if (primaryNode != null) { //restore
+						for (int i = 0; i < diff; i ++) {
+							Node targetNode = targetNodes.get(i);						
+							/*
+							 * It may copy empty partition if there was data loss.
+							 * But it is ok, because there may be some delay between handling primary and secondary partitions;
+							 * and during that delay some data may be added to primary partition by clients, 
+							 * so partition will not be empty. 
+							 */
+							copyPartition(primaryNode, deletedSecPart, NodeSection.PRIMARY, targetNode, NodeSection.SECONDARY);
+						}					
+					} else {
+						/*
+						 * Data loss.
+						 * Should not happen because primary should be restored on previous step. Delete this part ? 
+						 */						
+//						//create new secondary partition and register it in PartitionTable				
+//						for (int i = 0; i < diff; i ++) {
+//							Node targetNode = targetNodes.get(i);
+//							logger.warn("Data are lost for secondary partition, create a new one, partition id: {}, target node id: {}", deletedSecPart, targetNode);						
+//							targetNode.createPartition(NodeSection.SECONDARY, deletedSecPart);												
+//						}
+						throw new RuntimeException("Should not happen because primary should be restored on previous step.");
 					}
 				}
-			}
-		}				
+				
+				//remove previous entry
+				entry.removeSecondaryNode(deletedNode);
+			}		
+		}			
 	}		
 
 	/*
 	 * Restore deleted primary partitions from secondary nodes, if there are any, 
 	 * otherwise create empty partitions. 
 	 */
-	private void processRemovePrimary(List<Node> deletedNodes) {
-		logger.debug("Processing remove primary");				
-		
+	private void processRemovePrimary(List<Node> deletedNodes) {						
 		//sort nodes by primaryData.len asc		
 		List<Node> targetNodes = getNodes(deletedNodes);
 		
 		List<Integer> deletedPrimaryParts = this.getDeletedPrimaryPartitions(deletedNodes);
+		
+		logger.info("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
+		
 		for (Integer deletedPrimaryPart : deletedPrimaryParts) {			
 			logger.debug("Handle deleted primary partition: {}", deletedPrimaryPart);
 			
@@ -220,10 +247,12 @@ public class Cluster {
 				
 				copyPartition(replicaNode, deletedPrimaryPart, NodeSection.SECONDARY, targetNode, NodeSection.PRIMARY);				
 			} else { //data loss
-				logger.warn("Data are lost for partition, create a new one, partition id: {}", deletedPrimaryPart);
-				
 				//create new partition and register it in PartitionTable
-				Node targetNode = targetNodes.get(0);				
+				
+				Node targetNode = targetNodes.get(0);
+				
+				logger.warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);
+																
 				targetNode.createPartition(NodeSection.PRIMARY, deletedPrimaryPart);
 			}
 		}
@@ -237,14 +266,6 @@ public class Cluster {
 			}
 		}
 		return res;
-	}
-	
-	private Set<Integer> getDeletedSecondaryPartitions(List<Node> deletedNodes) {
-		List<Integer> nodes = new ArrayList<>();
-		for (Node deletedNode : deletedNodes) {
-			nodes.add(deletedNode.getId());
-		}			
-		return pt.getNodesSecondaryPartitions(nodes);
 	}
 	
 	private List<Integer> getDeletedPrimaryPartitions(List<Node> deletedNodes) {
@@ -357,6 +378,9 @@ public class Cluster {
 		transferPartition(true, src, srcPartId, srcSection, dest, destSection);		
 	}
 
+	/*
+	 * TODO: There are possible local copies and removes - handle appropriately.
+	 */
 	private void transferPartition(boolean isMove, Node src, int srcPartId, NodeSection srcSection, Node dest, NodeSection destSection) {
 		logger.debug((!isMove ? "Copying" : "Moving ") + 
 			" partition '{}' from '{}'.{} to '{}'.{}", 
@@ -430,21 +454,24 @@ public class Cluster {
 		return pt;
 	}
 	
-	public void checkClusterPartitions() {
-		int primaryTotal = 0, secondaryTotal = 0;
+	public void checkClusterPartitions(boolean checkCollisions) {
+		Set<Partition> primaryTotal = new HashSet<>();
+		int secondaryTotal = 0;
 		
 		List<String> errors = new ArrayList<>();
 				
 		for (Node n : pt.getNodes()) {
-			primaryTotal += n.getPrimaryData().size();
+			primaryTotal.addAll(n.getPrimaryData());
 			secondaryTotal += n.getSecondaryData().size();			
 			
 			//check collisions
-			for (Partition p : n.getSecondaryData()) {
-				if (n.getPrimaryData().contains(p)) {
-					errors.add(String.format("Secondary and primary collide for node: %s", n.getId()));
-				}
-			}	
+			if (checkCollisions) {
+				for (Partition p : n.getSecondaryData()) {
+					if (n.getPrimaryData().contains(p)) {
+						errors.add(String.format("Secondary and primary collide for node: %s", n.getId()));
+					}
+				}		
+			}
 			
 			//duplicates
 			if (n.getPrimaryData().size() != new HashSet<>(n.getPrimaryData()).size()) {
@@ -455,7 +482,7 @@ public class Cluster {
 			}
 		}		
 				
-		if (primaryTotal != pt.getPartitionsSize()) {
+		if (primaryTotal.size() != pt.getPartitionsSize()) {
 			errors.add(String.format("Primary total is not correct. Expected: %d, was: %d", pt.getPartitionsSize(), primaryTotal));
 		}
 		
