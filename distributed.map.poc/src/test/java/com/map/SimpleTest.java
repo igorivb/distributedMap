@@ -1,11 +1,11 @@
 package com.map;
 
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-
-import static org.junit.Assert.*;
 
 import org.junit.Test;
 
@@ -41,40 +41,22 @@ public class SimpleTest {
 	private void printAndCheckPartitions(Cluster cluster) {
 		PartitionTable pt = cluster.getPartitionTable();
 		
+		List<String> errors = new ArrayList<>();
+		
 		System.out.println();
 		System.out.printf("  id | primary | secondary%n");		
-		
-		int primaryTotal = 0, secondaryTotal = 0;
+				
 		int minPrimary = Integer.MAX_VALUE, maxPrimary = Integer.MIN_VALUE;
 		int minSecond = Integer.MAX_VALUE, maxSecond = Integer.MIN_VALUE;
-		
-		List<String> errors = new ArrayList<>();
 				
 		for (Node n : pt.getNodes()) {
-			System.out.printf("%4d | %7d | %9d%n", n.getId(), n.getPrimaryData().size(), n.getSecondaryData().size());
-			primaryTotal += n.getPrimaryData().size();
-			secondaryTotal += n.getSecondaryData().size();
+			System.out.printf("%4d | %7d | %9d%n", n.getId(), n.getPrimaryData().size(), n.getSecondaryData().size());			
 			
 			minPrimary = Math.min(minPrimary, n.getPrimaryData().size());
 			maxPrimary = Math.max(maxPrimary, n.getPrimaryData().size());
 			
 			minSecond = Math.min(minSecond, n.getSecondaryData().size());
-			maxSecond = Math.max(maxSecond, n.getSecondaryData().size());
-			
-			//check collisions
-			for (Partition p : n.getSecondaryData()) {
-				if (n.getPrimaryData().contains(p)) {
-					errors.add(String.format("Secondary and primary collide for node: %s", n.getId()));
-				}
-			}	
-			
-			//duplicates
-			if (n.getPrimaryData().size() != new HashSet<>(n.getPrimaryData()).size()) {
-				errors.add("There are duplicates in primary: " + n.getId());
-			}
-			if (n.getSecondaryData().size() != new HashSet<>(n.getSecondaryData()).size()) {
-				errors.add("There are duplicates in secondary: " + n.getId());
-			}
+			maxSecond = Math.max(maxSecond, n.getSecondaryData().size());									
 		}		
 		System.out.println();
 		
@@ -88,20 +70,7 @@ public class SimpleTest {
 		System.out.println("----- Partition Table: -----");
 		pt.printDebug();
 		
-		System.out.println();
-		
-		if (primaryTotal != pt.getPartitionsSize()) {
-			errors.add(String.format("Primary total is not correct. Expected: %d, was: %d", pt.getPartitionsSize(), primaryTotal));
-		}
-		
-		if (pt.hasReplica()) {
-			int secExpected = (pt.getNodesSize() > pt.getReplicationFactor() ? pt.getReplicationFactor() : pt.getNodesSize() - 1) * pt.getPartitionsSize();
-			if (secondaryTotal != secExpected) {
-				errors.add(String.format("Secondary total is not correct. Expected: %d, was: %d", secExpected, secondaryTotal));
-			}							
-		} else if (secondaryTotal > 0) {
-			errors.add("Secondary total is not empty: " + secondaryTotal);
-		}				
+		System.out.println();			
 		
 		if (maxPrimary - minPrimary > 1) {
 			errors.add("Big difference between primaries: " + (maxPrimary - minPrimary));
@@ -111,8 +80,7 @@ public class SimpleTest {
 				errors.add("Big difference between secondaries: " + (maxPrimary - minPrimary));
 			}
 		}
-		
-		
+				
 		if (!errors.isEmpty()) {
 			throw new RuntimeException("Found errors: " + errors);
 		}

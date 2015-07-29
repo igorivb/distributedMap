@@ -2,9 +2,9 @@ package com.map;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
-import com.map.Node.NodeSection;
 
 public class Node {
 
@@ -152,6 +152,30 @@ public class Node {
 	public Partition createPartition(NodeSection section, int partitionId) {
 		Partition part = new Partition(partitionId);
 		getData(section).add(part);
+		
+		if (section == NodeSection.PRIMARY) {
+			pt.getEntryForPartition(partitionId).setPrimaryNode(this);
+		} else {
+			pt.getEntryForPartition(partitionId).addSecondaryNode(this);	
+		}
+		
 		return part;
+	}
+
+	public void deleteSecondaryPartition(int partitionId) {
+		Iterator<Partition> iter = this.secondaryData.iterator();
+		while (iter.hasNext()) {
+			Partition part = iter.next();
+			if (part.getId() == partitionId) {
+				iter.remove();				
+				
+				pt.getEntryForPartition(partitionId).removeSecondaryNode(this);				
+				return;
+			}
+		}
+		
+		throw new RuntimeException(String.format(
+			"Failed to deleted secondary partition from node, "
+			+ "because partition doesn't exist. Node: %s, partition: %s", this.getId(), partitionId));		
 	}
 }

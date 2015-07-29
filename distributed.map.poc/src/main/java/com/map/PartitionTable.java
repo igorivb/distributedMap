@@ -3,8 +3,10 @@ package com.map;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,6 +86,39 @@ public class PartitionTable {
 		return new ArrayList<>(entry.getSecondaryNodes());
 	}
 	
+	public List<Integer> getNodesPrimaryPartitions(List<Integer> nodes) {
+		List<Integer> res = new ArrayList<>();		
+		for (PartitionTableEntry entry : this.getPartitionEntries().values()) {
+			for (Integer nodeId : nodes) {
+				if (entry.getPrimaryNode().getId() == nodeId) {
+					res.add(entry.getPartitionId());
+					break;
+				}	
+			}
+		}			
+		return res;
+	}
+	
+	public Set<Integer> getNodesSecondaryPartitions(List<Integer> nodes) {
+		Set<Integer> res = new HashSet<>();		
+		for (PartitionTableEntry entry : this.getPartitionEntries().values()) {
+			for (Node secNode : entry.getSecondaryNodes()) {
+				boolean found = false;
+				for (Integer nodeId : nodes) {
+					if (secNode.getId() == nodeId) {
+						res.add(entry.getPartitionId());
+						found = true;
+						break;
+					}	
+				}	
+				if (found) {
+					break;
+				}
+			}
+		}			
+		return res;
+	}
+	
 	@Override
 	public String toString() {	
 		return String.format("Nodes: %d, entries: %d", this.getNodesSize(), this.getPartitionsSize());
@@ -112,7 +147,7 @@ public class PartitionTable {
 		node.markDeleted();		
 	}
 
-	/*
+	/**
 	 * Delete nodes from all tables and lists.
 	 */
 	public void deleteNodes(List<Node> deletedNodes) {
