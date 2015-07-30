@@ -7,9 +7,10 @@ public class Partition {
 
 	private final int id;
 	
-	private Map data = new HashMap<>();
+	//internal data
+	private Map<String, Map<?, ?>> maps = new HashMap<>();
 	
-	//TODO: add status
+	//TODO: add status ?
 	
 	public Partition(int id) {
 		this.id = id;	
@@ -42,5 +43,15 @@ public class Partition {
 	@Override
 	public String toString() {	
 		return String.valueOf(this.id);
+	}
+
+	//TODO: correctly create maps
+	public Map<?, ?> getMap(String mapId) {		
+		Map<?, ?> map = maps.get(mapId);
+		if (map == null) {
+			map = new HashMap<String, String>();
+			maps.put(mapId, map);
+		}
+		return map;
 	}
 }

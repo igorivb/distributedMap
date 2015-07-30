@@ -76,9 +76,8 @@ public class PartitionTable {
 		return this.replicationFactor > 0;
 	}
 	
-	public Partition getPartitionForKey(Object key) {
-		//TODO
-		return null;
+	public int getPartitionForKey(Object key) {
+		return key.hashCode() % this.getPartitionsSize();
 	}
 	
 	public Node getPrimaryNodeForPartition(int partitionId) {

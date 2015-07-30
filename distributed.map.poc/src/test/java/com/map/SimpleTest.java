@@ -1,16 +1,41 @@
 package com.map;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.Test;
 
 public class SimpleTest {
 
+	@Test
+	public void testPut() {						
+		Cluster cluster = createTestCluster();
+		Node node = cluster.getPartitionTable().getNode(0);		
+		@SuppressWarnings("unchecked")
+		Map<String, String> map = (Map<String, String>) node.getMap("mapId");
+		
+		map.put("key", "value");
+		
+		assertEquals("value", map.get("key"));
+	}
+	
+	private Cluster createTestCluster() {
+		int partitionsCount = 7;
+		int replicationFactor = 1;
+		int nodesCount = partitionsCount; 
+		
+		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
+		for (int i = 0; i < nodesCount; i ++) {
+			Node node = new Node(i, null);			
+			cluster.addNode(node);
+		}
+		return cluster;
+	}
+	
 	/*
 	 * Test first version of adding node.
 	 * Should work without exceptions. 

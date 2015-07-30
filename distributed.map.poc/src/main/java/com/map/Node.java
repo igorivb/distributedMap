@@ -2,8 +2,10 @@ package com.map;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 
 public class Node {
@@ -32,11 +34,12 @@ public class Node {
 	
 	private List<Partition> secondaryData = new ArrayList<>();
 	
+	private Map<String, NodeMap<?, ?>> maps = new HashMap<>();
 	
 	public Node(int id, InetAddress address) {
 		this.id = id;
 		this.address = address;
-		this.status = NodeStatus.NORMAL;
+		this.status = NodeStatus.NORMAL;				
 	}
 	
 	public int getId() {
@@ -92,6 +95,15 @@ public class Node {
 		return section == NodeSection.PRIMARY ? this.primaryData : this.secondaryData;
 	}
 	
+	public Partition getPartition(int partitionId, NodeSection section) {
+		for (Partition p : getData(section)) {
+			if (p.getId() == partitionId) {
+				return p;
+			}
+		}
+		return null;
+	}
+	
 	public List<Partition> getPrimaryData() {
 		return primaryData;
 	}
@@ -107,29 +119,6 @@ public class Node {
 			}
 		}
 		return false;
-	}
-	
-	//---------------- Client operations: start
-	
-	
-	public int size() {
-		//TODO
-		return 0;
-	}
-	
-	public Object get(Object key) {
-		//TODO
-		return null;
-	}
-	
-	public Object put(Object key, Object value) {
-		//TODO
-		return null;		
-	}
-	
-	public Object remove(Object key) {
-		//TODO
-		return null;
 	}
 	
 		
@@ -192,5 +181,21 @@ public class Node {
 		throw new RuntimeException(String.format(
 			"Failed to deleted secondary partition from node, "
 			+ "because partition doesn't exist. Node: %s, partition: %s", this.getId(), partitionId));		
+	}
+
+	public PartitionTable getPartitionTable() {
+		return this.pt;
+	}
+	
+	/*
+	 * TODO: correctly create maps, now I always create Map<String, String>
+	 */
+	public Map<?, ?> getMap(String mapId) {		
+		NodeMap<?, ?> map = maps.get(mapId);
+		if (map == null) {
+			map = new NodeMap<String, String>(mapId, this);
+			maps.put(mapId, map);
+		}
+		return map;
 	}
 }
