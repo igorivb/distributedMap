@@ -75,6 +75,74 @@ public class SimpleTest {
 	}
 	
 	/*
+	 * Remove 4 nodes: data loss, interesting data re-distribution.
+	 */
+	@Test
+	public void testRemoveNode_2() {
+		int partitionsCount = 7;
+		int replicationFactor = 2;
+		int nodesCount = partitionsCount;
+		
+		List<Node> nodes = new ArrayList<>();
+		
+		//create cluster
+		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
+		for (int i = 0; i < nodesCount; i ++) {
+			Node node = new Node(i, null);
+			nodes.add(node);
+			cluster.addNode(node);
+		}
+		
+		printPartitions(cluster);
+		
+		System.out.println("-------------------------------------------------------");
+		System.out.println("Remove nodes");
+		System.out.println("-------------------------------------------------------");
+		
+		//delete 2 nodes
+		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(5));
+		cluster.removeNodes(deletedNodes);
+		
+		printPartitions(cluster);
+				
+		checkPartitionTableAfterRemoval(cluster, deletedNodes);					
+	}
+	
+	/*
+	 * Remove 5 nodes: data loss, interesting data re-distribution.
+	 */
+	@Test
+	public void testRemoveNode_3() {
+		int partitionsCount = 7;
+		int replicationFactor = 2;
+		int nodesCount = partitionsCount;
+		
+		List<Node> nodes = new ArrayList<>();
+		
+		//create cluster
+		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
+		for (int i = 0; i < nodesCount; i ++) {
+			Node node = new Node(i, null);
+			nodes.add(node);
+			cluster.addNode(node);
+		}
+		
+		printPartitions(cluster);
+		
+		System.out.println("-------------------------------------------------------");
+		System.out.println("Remove nodes");
+		System.out.println("-------------------------------------------------------");
+		
+		//delete 2 nodes
+		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(4), nodes.get(5));
+		cluster.removeNodes(deletedNodes);
+		
+		printPartitions(cluster);
+				
+		checkPartitionTableAfterRemoval(cluster, deletedNodes);					
+	}
+	
+	/*
 	 * Remove 2 nodes: replication factor is the same.
 	 * Data loss.
 	 */
@@ -217,38 +285,47 @@ public class SimpleTest {
 	 */
 	@Test
 	public void testRemoveAll() {
-		int partitionsCount = 7;
-		int replicationFactor = 3;
+		int partitionsCount = 7;		
 		int nodesCount = partitionsCount;
-		
-		List<Node> nodes = new ArrayList<>();
-		
-		//create cluster
-		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
-		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
-			nodes.add(node);
-			cluster.addNode(node);
-		}
-		
-		printPartitions(cluster);		
-		
-		for (int i = 0; i < nodesCount; i ++) {
+				
+		for (int replicationFactor = 0; replicationFactor < partitionsCount; replicationFactor ++) {
+			List<Node> nodes = new ArrayList<>();
+			
+			//create cluster
 			System.out.println("-------------------------------------------------------");
-			System.out.println("Remove nodes");
+			System.out.println("Create cluster nodes");
 			System.out.println("-------------------------------------------------------");
 			
-			List<Node> deletedNodes = Arrays.asList(nodes.get(i));
-			cluster.removeNodes(deletedNodes);
+			Cluster cluster = new Cluster(replicationFactor, partitionsCount);
+			for (int i = 0; i < nodesCount; i ++) {
+				Node node = new Node(i, null);
+				nodes.add(node);
+				cluster.addNode(node);
+			}
 			
-			printPartitions(cluster);
+			printPartitions(cluster);		
 			
-			checkPartitionTableAfterRemoval(cluster, deletedNodes);
+			for (int i = 0; i < nodesCount; i ++) {
+				System.out.println("-------------------------------------------------------");
+				System.out.println("Remove nodes");
+				System.out.println("-------------------------------------------------------");
+				
+				List<Node> deletedNodes = Arrays.asList(nodes.get(i));
+				cluster.removeNodes(deletedNodes);
+				
+				printPartitions(cluster);
+				
+				checkPartitionTableAfterRemoval(cluster, deletedNodes);
+			}			
 		}											
 	}
 
 	//check that PartitionTable doesn't have any info about deleted nodes
 	private void checkPartitionTableAfterRemoval(Cluster cluster, List<Node> deletedNodes) {
+		if (cluster.isEmpty()) {
+			return;
+		}
+		
 		PartitionTable pt = cluster.getPartitionTable();
 		
 		for (Node node : pt.getNodes()) {

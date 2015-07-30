@@ -11,7 +11,13 @@ public class Node {
 	enum NodeStatus { NORMAL, DELETED }
 	
 	//Use enum instead of boolean to indicate primary and secondary for better code readability.
-	enum NodeSection { PRIMARY, SECONDARY }
+	enum NodeSection { 
+		PRIMARY, SECONDARY;
+		
+		static NodeSection reverse(NodeSection section) {
+			return section == PRIMARY ? SECONDARY : PRIMARY;
+		}
+	}
 	
 	
 	private final int id;
@@ -92,6 +98,15 @@ public class Node {
 	
 	public List<Partition> getSecondaryData() {
 		return secondaryData;
+	}
+	
+	public boolean hasPartition(int partitionId, NodeSection section) {
+		for (Partition p : getData(section)) {
+			if (p.getId() == partitionId) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	//---------------- Client operations: start

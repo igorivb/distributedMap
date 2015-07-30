@@ -60,7 +60,7 @@ public class Cluster {
 		logger.info("Creating cluster, replicationFactor: {}, partitionsCount: {}", replicationFactor, partitionsCount);
 	}
 	
-	/*
+	/**
 	 * TODO: 
 	 * 1. allows to add 1 node at a time. 
 	 * If needed improve later to allow process several nodes at a time.
@@ -105,36 +105,45 @@ public class Cluster {
 	/**
 	 * Allows to delete multiple nodes at a time.
 	 * 
-	 * TODO: issues:
-	 *   0. processRemovePrimary and processRemoveSecondary create collisions between primary and secondary. Try to avoid ? 
-	 *   	There are possible local copies here.
-	 *   	Think about it when implementing 'balanceRemoveNodes'.
-	 *   
-	 *   1. junit test failures 
+	 * TODO: issues:    
+	 *   1. handle if we have previous 'remove' in progress: stop it and start this one
+	 *   2. implement 'balanceRemoveNodes': 
+	 *   e.g. partitions may be not balanced if 'remove' occurred in the middle of 'add' 
+	 *   where only part of partitions were re-distributed. 
 	 */
 	public void removeNodes(List<Node> deletedNodes) {
 		logger.info("Removing nodes: {}", deletedNodes);
-				
-		for (Node node : deletedNodes) { //mark nodes as deleted
-			pt.markNodeAsDeleted(node);
+		
+		//check if we have nodes to delete
+		for (Node deletedNode : deletedNodes) {
+			Node n = pt.getNode(deletedNode.getId());
+			if (n == null) {
+				throw new RuntimeException(String.format("Failed to delete nodes, node: %s doesn't exist", deletedNode));
+			}
 		}
-		
-		//TODO: handle if all nodes are deleted		
-		
-		//TODO: handle if we have previous remove in progress: stop it and start this one
-		
-		processRemovePrimary(deletedNodes);
-		
-		if (pt.hasReplica()) {
-			processRemoveSecondary(deletedNodes);
-		}
-		
-		balanceRemoveNodes(deletedNodes);
 				
-		pt.deleteNodes(deletedNodes);
+		boolean deleteAllNodes = deletedNodes.size() == pt.getNodesSize();
 		
-		//TODO: check also that there are no checkCollisions after implementing 'balanceRemoveNodes'
-		checkClusterPartitions(false);
+		if (!deleteAllNodes) {
+			for (Node node : deletedNodes) { //mark nodes as deleted
+				pt.markNodeAsDeleted(node);
+			}				
+					
+			processRemovePrimary(deletedNodes);
+			
+			if (pt.hasReplica()) {
+				processRemoveSecondary(deletedNodes);
+			}
+			
+			balanceRemoveNodes(deletedNodes);
+					
+			pt.deleteNodes(deletedNodes);
+						
+			checkClusterPartitions(true);
+		} else {
+			logger.info("Deleting all nodes");
+			pt.deleteAll();
+		}						
 	}
 	
 	/*
@@ -177,8 +186,7 @@ public class Cluster {
 			
 			for (Integer deletedSecPart : deletedSecParts) { //iterate partitions								
 				PartitionTableEntry entry = pt.getEntryForPartition(deletedSecPart);
-				int diff = currentRF - excludeDeletedNodes(entry.getSecondaryNodes()).size();
-				Collections.sort(targetNodes, secondaryNodesAscCmp);
+				int diff = currentRF - excludeDeletedNodes(entry.getSecondaryNodes()).size();				
 				
 				logger.debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
 				
@@ -186,17 +194,18 @@ public class Cluster {
 					logger.debug("No need to restore secondary partition: {}", deletedSecPart);
 				} else {
 					Node primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart);
-					if (primaryNode != null) { //restore
-						for (int i = 0; i < diff; i ++) {
-							Node targetNode = targetNodes.get(i);						
-							/*
-							 * It may copy empty partition if there was data loss.
-							 * But it is ok, because there may be some delay between handling primary and secondary partitions;
-							 * and during that delay some data may be added to primary partition by clients, 
-							 * so partition will not be empty. 
-							 */
-							copyPartition(primaryNode, deletedSecPart, NodeSection.PRIMARY, targetNode, NodeSection.SECONDARY);
-						}					
+					if (primaryNode != null) { //restore						
+						//find target node
+						Collections.sort(targetNodes, secondaryNodesAscCmp);							
+						Node targetNode = findTargetNode(targetNodes, deletedSecPart, NodeSection.SECONDARY);							
+																											
+						/*
+						 * It may copy empty partition if there was data loss.
+						 * But it is ok, because there may be some delay between handling primary and secondary partitions;
+						 * and during that delay some data may be added to primary partition by clients, 
+						 * so partition will not be empty. 
+						 */
+						copyPartition(primaryNode, deletedSecPart, NodeSection.PRIMARY, targetNode, NodeSection.SECONDARY);											
 					} else {
 						/*
 						 * Data loss.
@@ -217,6 +226,26 @@ public class Cluster {
 			}		
 		}			
 	}		
+	
+	//Try to avoid collisions between primary and secondary.
+	private Node findTargetNode(List<Node> targetNodes, int partitionId, NodeSection section) {
+		Node withCollision = null;
+		
+		for (Node tg : targetNodes) {
+			if (!tg.hasPartition(partitionId, section)) { //check if contains in section
+				if (!tg.hasPartition(partitionId, NodeSection.reverse(section))) { //check if there is collision
+					return tg;
+				} else if (withCollision == null) {
+					withCollision = tg;
+				}				
+			}
+		}		
+		
+		if (withCollision != null) {
+			return withCollision;
+		}
+		throw new RuntimeException(String.format("Failed to find target node. Partition: %s, section: %s", partitionId, section));		
+	}
 
 	/*
 	 * Restore deleted primary partitions from secondary nodes, if there are any, 
@@ -243,7 +272,7 @@ public class Cluster {
 				Node replicaNode = secNodes.get(0); //take first one
 				
 				//get node with minimum primary
-				Node targetNode = targetNodes.get(0);
+				Node targetNode = findTargetNode(targetNodes, deletedPrimaryPart, NodeSection.PRIMARY);
 				
 				copyPartition(replicaNode, deletedPrimaryPart, NodeSection.SECONDARY, targetNode, NodeSection.PRIMARY);				
 			} else { //data loss
@@ -256,7 +285,7 @@ public class Cluster {
 				targetNode.createPartition(NodeSection.PRIMARY, deletedPrimaryPart);
 			}
 		}
-	}
+	}		
 	
 	private List<Node> excludeDeletedNodes(List<Node> nodes) {
 		List<Node> res = new ArrayList<>();
@@ -483,7 +512,7 @@ public class Cluster {
 		}		
 				
 		if (primaryTotal.size() != pt.getPartitionsSize()) {
-			errors.add(String.format("Primary total is not correct. Expected: %d, was: %d", pt.getPartitionsSize(), primaryTotal));
+			errors.add(String.format("Primary total is not correct. Expected: %d, was: %s", pt.getPartitionsSize(), primaryTotal));
 		}
 		
 		if (pt.hasReplica()) {
@@ -498,5 +527,9 @@ public class Cluster {
 		if (!errors.isEmpty()) {
 			throw new RuntimeException("Found errors: " + errors);
 		}
+	}
+	
+	public boolean isEmpty() {
+		return this.pt.getNodesSize() == 0;
 	}
 }

@@ -47,8 +47,12 @@ public class PartitionTable {
 	/**
 	 * Return all nodes, including removed.
 	 */
-	public Collection<Node> getNodes() {
-		return this.nodes.values();
+	public List<Node> getNodes() {
+		return new ArrayList<>(this.nodes.values());
+	}
+	
+	public Node getNode(int nodeId) {
+		return this.nodes.get(nodeId);
 	}
 	
 	public int getNodesSize() {
@@ -137,7 +141,7 @@ public class PartitionTable {
 				sec.add(secNode.getId());
 			} 
 				
-			System.out.printf("%9s | %7s | %s%n", entry.getPartitionId(), entry.getPrimaryNode().getId(), sec);
+			System.out.printf("%9s | %7s | %s%n", entry.getPartitionId(), entry.getPrimaryNode(), sec);
 		}
 		
 		System.out.println();		
@@ -150,9 +154,20 @@ public class PartitionTable {
 	/**
 	 * Delete nodes from all tables and lists.
 	 */
-	public void deleteNodes(List<Node> deletedNodes) {
+	public void deleteNodes(List<Node> deletedNodes) {		
 		for (Node deletedNode : deletedNodes) {
 			nodes.remove(deletedNode.getId()); 
+		}		
+	}
+	
+	public void deleteAll() {
+		this.nodes.clear();
+		
+		for (PartitionTableEntry entry : partitionEntries.values()) {
+			entry.removePrimaryNode(entry.getPrimaryNode());
+			for (Node n : entry.getSecondaryNodes()) {
+				entry.removeSecondaryNode(n);
+			}
 		}		
 	}
 }
