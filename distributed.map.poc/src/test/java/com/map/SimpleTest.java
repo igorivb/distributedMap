@@ -9,33 +9,69 @@ import java.util.Map;
 
 import org.junit.Test;
 
+import com.map.Node.NodeSection;
+
 public class SimpleTest {
 
 	@Test
-	public void testPut() {						
+	public void testSimpleOps() {						
+		String key = "key";
+		String value = "value";
+		String mapId = "mapId";
+		
 		Cluster cluster = createTestCluster();
 		Node node = cluster.getPartitionTable().getNode(0);		
 		@SuppressWarnings("unchecked")
-		Map<String, String> map = (Map<String, String>) node.getMap("mapId");
+		Map<String, String> map = (Map<String, String>) node.getMap(mapId);
 		
-		map.put("key", "value");
+		map.put(key, value);
+		assertEquals(1, map.size());
 		
-		assertEquals("value", map.get("key"));
+		assertEquals(value, map.get(key));
+		
+		assertEquals(value, map.remove(key));
+		assertEquals(0, map.size());
 	}
-	
-	private Cluster createTestCluster() {
+
+	/*
+	 * Check that 'put' adds data to secondary nodes.
+	 */
+	@Test
+	public void testPut() {
+		String key = "key";
+		String value = "value";
+		String mapId = "mapId";
+		
 		int partitionsCount = 7;
-		int replicationFactor = 1;
+		int replicationFactor = 3;
 		int nodesCount = partitionsCount; 
 		
-		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
-		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);			
-			cluster.addNode(node);
-		}
-		return cluster;
+		Cluster cluster = createTestCluster(partitionsCount, replicationFactor, nodesCount);
+		PartitionTable pt = cluster.getPartitionTable();
+		
+		Node node = pt.getNode(0);		
+		@SuppressWarnings("unchecked")
+		Map<String, String> map = (Map<String, String>) node.getMap(mapId);
+		
+		map.put(key, value);
+		assertEquals(1, map.size());
+		
+		int partitionId = pt.getPartitionForKey(key);
+		
+		assertEquals(1, getMapSizeInNodes(mapId, Arrays.asList(pt.getPrimaryNodeForPartition(partitionId)), NodeSection.PRIMARY));
+		assertEquals(replicationFactor, getMapSizeInNodes(mapId, pt.getSecondaryNodesForPartition(partitionId), NodeSection.SECONDARY));		
 	}
 	
+	private int getMapSizeInNodes(String mapId, List<Node> nodes, NodeSection section) {
+		int size = 0;
+		for (Node node : nodes) {			
+			for (Partition part : node.getData(section)) {
+				size += part.getMap(mapId).size();
+			}	
+		}		
+		return size;
+	}
+
 	/*
 	 * Test first version of adding node.
 	 * Should work without exceptions. 
@@ -381,6 +417,11 @@ public class SimpleTest {
 	
 	private void printPartitions(Cluster cluster) {
 		PartitionTable pt = cluster.getPartitionTable();
+
+		System.out.println("----- Partition Table: -----");
+		pt.printDebug();
+		
+		System.out.println();
 		
 		System.out.println("----- Nodes sizes: -----");
 		System.out.printf("  id | primary | secondary%n");		
@@ -395,12 +436,7 @@ public class SimpleTest {
 			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getId(), n.getPrimaryData(), n.getSecondaryData());
 		}
 		
-		System.out.println();
-		
-		System.out.println("----- Partition Table: -----");
-		pt.printDebug();
-		
-		System.out.println();			
+		System.out.println();								
 	}
 	
 	private void checkPartitions(Cluster cluster) {
@@ -431,5 +467,27 @@ public class SimpleTest {
 		if (!errors.isEmpty()) {
 			throw new RuntimeException("Found errors: " + errors);
 		}
+	}
+	
+	private Cluster createTestCluster() {
+		int partitionsCount = 7;
+		int replicationFactor = 1;
+		int nodesCount = partitionsCount; 
+		
+		return this.createTestCluster(partitionsCount, replicationFactor, nodesCount);
+	}
+	
+	private Cluster createTestCluster(int partitionsCount, int replicationFactor, int nodesCount) {				
+		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
+		for (int i = 0; i < nodesCount; i ++) {
+			Node node = new Node(i, null);			
+			cluster.addNode(node);
+		}
+		
+		printPartitions(cluster);
+		System.out.println("-------------------------------------------------------");
+		System.out.println("-------------------------------------------------------");
+		
+		return cluster;
 	}
 }
