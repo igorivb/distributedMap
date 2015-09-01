@@ -9,8 +9,6 @@ import java.util.Map;
 
 import org.junit.Test;
 
-import com.map.Node.NodeSection;
-
 public class SimpleTest {
 
 	@Test
@@ -20,7 +18,7 @@ public class SimpleTest {
 		String mapId = "mapId";
 		
 		Cluster cluster = createTestCluster();
-		Node node = cluster.getPartitionTable().getNode(0);		
+		Node node = cluster.getPartitionTable().getNodes().get(0);		
 		@SuppressWarnings("unchecked")
 		Map<String, String> map = (Map<String, String>) node.getMap(mapId);
 		
@@ -49,7 +47,7 @@ public class SimpleTest {
 		Cluster cluster = createTestCluster(partitionsCount, replicationFactor, nodesCount);
 		PartitionTable pt = cluster.getPartitionTable();
 		
-		Node node = pt.getNode(0);		
+		Node node = pt.getNodes().get(0);	
 		@SuppressWarnings("unchecked")
 		Map<String, String> map = (Map<String, String>) node.getMap(mapId);
 		
@@ -58,13 +56,14 @@ public class SimpleTest {
 		
 		int partitionId = pt.getPartitionForKey(key);
 		
-		assertEquals(1, getMapSizeInNodes(mapId, Arrays.asList(pt.getPrimaryNodeForPartition(partitionId)), NodeSection.PRIMARY));
-		assertEquals(replicationFactor, getMapSizeInNodes(mapId, pt.getSecondaryNodesForPartition(partitionId), NodeSection.SECONDARY));		
+		assertEquals(1, getMapSizeInNodes(pt, mapId, Arrays.asList(pt.getPrimaryNodeForPartition(partitionId)), NodeSection.PRIMARY));
+		assertEquals(replicationFactor, getMapSizeInNodes(pt, mapId, pt.getSecondaryNodesForPartition(partitionId), NodeSection.SECONDARY));		
 	}
 	
-	private int getMapSizeInNodes(String mapId, List<Node> nodes, NodeSection section) {
+	private int getMapSizeInNodes(PartitionTable pt, String mapId, List<NodeEntry> nodes, NodeSection section) {
 		int size = 0;
-		for (Node node : nodes) {			
+		for (NodeEntry nodeEntry : nodes) {	
+			Node node = pt.getNodes().get(nodeEntry.getId());
 			for (Partition part : node.getData(section)) {
 				size += part.getMap(mapId).size();
 			}	
@@ -84,7 +83,7 @@ public class SimpleTest {
 					
 			Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 			for (int i = 0; i < partitionsCount + 1; i ++) {
-				cluster.addNode(new Node(i, null));
+				cluster.addNode(new NodeEntry(i, null));
 				printPartitions(cluster);
 				checkPartitions(cluster);
 			}
@@ -110,12 +109,12 @@ public class SimpleTest {
 		int replicationFactor = 1;
 		int nodesCount = partitionsCount;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -127,7 +126,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(5));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -144,12 +143,12 @@ public class SimpleTest {
 		int replicationFactor = 2;
 		int nodesCount = partitionsCount;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -161,7 +160,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(5));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -178,12 +177,12 @@ public class SimpleTest {
 		int replicationFactor = 2;
 		int nodesCount = partitionsCount;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -195,7 +194,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(4), nodes.get(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2), nodes.get(3), nodes.get(4), nodes.get(5));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -213,12 +212,12 @@ public class SimpleTest {
 		int replicationFactor = 1;
 		int nodesCount = partitionsCount;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -230,7 +229,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(2));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -248,12 +247,12 @@ public class SimpleTest {
 		int replicationFactor = 0;
 		int nodesCount = partitionsCount;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -265,7 +264,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0), nodes.get(5));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -282,12 +281,12 @@ public class SimpleTest {
 		int replicationFactor = 2;
 		int nodesCount = 3;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -299,7 +298,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -316,12 +315,12 @@ public class SimpleTest {
 		int replicationFactor = 2;
 		int nodesCount = 2;
 		
-		List<Node> nodes = new ArrayList<>();
+		List<NodeEntry> nodes = new ArrayList<>();
 		
 		//create cluster
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);
+			NodeEntry node = new NodeEntry(i, null);
 			nodes.add(node);
 			cluster.addNode(node);
 		}
@@ -333,7 +332,7 @@ public class SimpleTest {
 		System.out.println("-------------------------------------------------------");
 		
 		//delete 2 nodes
-		List<Node> deletedNodes = Arrays.asList(nodes.get(0));
+		List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(0));
 		cluster.removeNodes(deletedNodes);
 		
 		printPartitions(cluster);
@@ -350,16 +349,16 @@ public class SimpleTest {
 		int nodesCount = partitionsCount;
 				
 		for (int replicationFactor = 0; replicationFactor < partitionsCount; replicationFactor ++) {
-			List<Node> nodes = new ArrayList<>();
+			List<NodeEntry> nodes = new ArrayList<>();
 			
 			//create cluster
 			System.out.println("-------------------------------------------------------");
-			System.out.println("Create cluster nodes");
+			System.out.println("Create cluster nodes, replicationFactor: " + replicationFactor);
 			System.out.println("-------------------------------------------------------");
 			
 			Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 			for (int i = 0; i < nodesCount; i ++) {
-				Node node = new Node(i, null);
+				NodeEntry node = new NodeEntry(i, null);
 				nodes.add(node);
 				cluster.addNode(node);
 			}
@@ -368,10 +367,10 @@ public class SimpleTest {
 			
 			for (int i = 0; i < nodesCount; i ++) {
 				System.out.println("-------------------------------------------------------");
-				System.out.println("Remove nodes");
+				System.out.println("Remove nodes, node: " + i);
 				System.out.println("-------------------------------------------------------");
 				
-				List<Node> deletedNodes = Arrays.asList(nodes.get(i));
+				List<NodeEntry> deletedNodes = Arrays.asList(nodes.get(i));
 				cluster.removeNodes(deletedNodes);
 				
 				printPartitions(cluster);
@@ -382,14 +381,14 @@ public class SimpleTest {
 	}
 
 	//check that PartitionTable doesn't have any info about deleted nodes
-	private void checkPartitionTableAfterRemoval(Cluster cluster, List<Node> deletedNodes) {
+	private void checkPartitionTableAfterRemoval(Cluster cluster, List<NodeEntry> deletedNodes) {
 		if (cluster.isEmpty()) {
 			return;
 		}
 		
 		PartitionTable pt = cluster.getPartitionTable();
 		
-		for (Node node : pt.getNodes()) {
+		for (NodeEntry node : pt.getNodeEntries()) {
 			if (deletedNodes.contains(node)) {
 				fail("Nodes contain deleted node: " + node);
 			}
@@ -404,8 +403,8 @@ public class SimpleTest {
 					entry.getPartitionId(), entry.getPrimaryNode()));
 			}
 			
-			List<Node> secNodes = entry.getSecondaryNodes();
-			for (Node secNode : secNodes) {
+			List<NodeEntry> secNodes = entry.getSecondaryNodes();
+			for (NodeEntry secNode : secNodes) {
 				if (deletedNodes.contains(secNode)) {
 					fail(String.format(
 						"Contains deleted node entry in secondary, partition: %s, node: %s", 
@@ -426,14 +425,14 @@ public class SimpleTest {
 		System.out.println("----- Nodes sizes: -----");
 		System.out.printf("  id | primary | secondary%n");		
 			
-		for (Node n : pt.getNodes()) {
-			System.out.printf("%4d | %7d | %9d%n", n.getId(), n.getPrimaryData().size(), n.getSecondaryData().size());												
+		for (NodeEntry n : pt.getNodeEntries()) {
+			System.out.printf("%4d | %7d | %9d%n", n.getId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());												
 		}		
 		System.out.println();
 		
 		System.out.println("----- Nodes Details: -----");		
-		for (Node n : pt.getNodes()) {
-			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getId(), n.getPrimaryData(), n.getSecondaryData());
+		for (NodeEntry n : pt.getNodeEntries()) {
+			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());
 		}
 		
 		System.out.println();								
@@ -447,12 +446,12 @@ public class SimpleTest {
 		int minPrimary = Integer.MAX_VALUE, maxPrimary = Integer.MIN_VALUE;
 		int minSecond = Integer.MAX_VALUE, maxSecond = Integer.MIN_VALUE;
 				
-		for (Node n : pt.getNodes()) {
-			minPrimary = Math.min(minPrimary, n.getPrimaryData().size());
-			maxPrimary = Math.max(maxPrimary, n.getPrimaryData().size());
+		for (NodeEntry n : pt.getNodeEntries()) {
+			minPrimary = Math.min(minPrimary, n.getPrimaryPartitionsCount());
+			maxPrimary = Math.max(maxPrimary, n.getPrimaryPartitionsCount());
 			
-			minSecond = Math.min(minSecond, n.getSecondaryData().size());
-			maxSecond = Math.max(maxSecond, n.getSecondaryData().size());									
+			minSecond = Math.min(minSecond, n.getSecondaryPartitionsCount());
+			maxSecond = Math.max(maxSecond, n.getSecondaryPartitionsCount());									
 		}				
 		
 		if (maxPrimary - minPrimary > 1) {
@@ -480,7 +479,7 @@ public class SimpleTest {
 	private Cluster createTestCluster(int partitionsCount, int replicationFactor, int nodesCount) {				
 		Cluster cluster = new Cluster(replicationFactor, partitionsCount);
 		for (int i = 0; i < nodesCount; i ++) {
-			Node node = new Node(i, null);			
+			NodeEntry node = new NodeEntry(i, null);			
 			cluster.addNode(node);
 		}
 		

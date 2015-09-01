@@ -1,12 +1,9 @@
 package com.map;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +18,7 @@ public class PartitionTable {
 	private Map<Integer, PartitionTableEntry> partitionEntries;
 	
 	//nodes in cluster: all nodes, including removed
-	private Map<Integer, Node> nodes;
+	private Map<Integer, NodeEntry> nodeEntries;		
 	
 	public PartitionTable(int replicationFactor, int partitionsCount) {
 		this.replicationFactor = replicationFactor;
@@ -30,10 +27,10 @@ public class PartitionTable {
 		partitionEntries = new HashMap<>(partitionsCount);
 				
 		for (int i = 0; i < partitionsCount; i ++) { //create empty entries
-			partitionEntries.put(i, new PartitionTableEntry(i));
+			partitionEntries.put(i, new PartitionTableEntry(i, this));
 		}
 		
-		nodes = new HashMap<>();
+		nodeEntries = new HashMap<>();
 	}
 	
 	public int getReplicationFactor() {
@@ -47,20 +44,20 @@ public class PartitionTable {
 	/**
 	 * Return all nodes, including removed.
 	 */
-	public List<Node> getNodes() {
-		return new ArrayList<>(this.nodes.values());
+	public List<NodeEntry> getNodeEntries() {
+		return new ArrayList<>(this.nodeEntries.values());
 	}
 	
-	public Node getNode(int nodeId) {
-		return this.nodes.get(nodeId);
+	public NodeEntry getNodeEntry(int nodeId) {
+		return this.nodeEntries.get(nodeId);
 	}
 	
 	public int getNodesSize() {
-		return this.nodes.size();		
+		return this.nodeEntries.size();		
 	}
 	
-	public void addNode(Node newNode) {
-		this.nodes.put(newNode.getId(), newNode);
+	public void addNodeEntry(NodeEntry newNode) {
+		this.nodeEntries.put(newNode.getId(), newNode);
 		newNode.setPartitionTable(this);
 	}
 	
@@ -79,22 +76,22 @@ public class PartitionTable {
 	public int getPartitionForKey(Object key) {
 		return key.hashCode() % this.getPartitionsSize();
 	}
-	
-	public Node getPrimaryNodeForPartition(int partitionId) {
-		return this.partitionEntries.get(partitionId).getPrimaryNode();
+		
+	public NodeEntry getPrimaryNodeForPartition(int partitionId) {
+		return this.partitionEntries.get(partitionId).getPrimaryNode();				
 	}
-	
-	public List<Node> getSecondaryNodesForPartition(int partitionId) {
+		
+	public List<NodeEntry> getSecondaryNodesForPartition(int partitionId) {
 		PartitionTableEntry entry = this.partitionEntries.get(partitionId);
-		return new ArrayList<>(entry.getSecondaryNodes());
+		return entry.getSecondaryNodes();
 	}
 	
-	public List<Integer> getNodesPrimaryPartitions(List<Integer> nodes) {
-		List<Integer> res = new ArrayList<>();		
+	public List<PartitionTableEntry> getNodesPrimaryPartitions(List<Integer> nodes) {
+		List<PartitionTableEntry> res = new ArrayList<>();		
 		for (PartitionTableEntry entry : this.getPartitionEntries().values()) {
 			for (Integer nodeId : nodes) {
 				if (entry.getPrimaryNode().getId() == nodeId) {
-					res.add(entry.getPartitionId());
+					res.add(entry);
 					break;
 				}	
 			}
@@ -102,14 +99,17 @@ public class PartitionTable {
 		return res;
 	}
 	
-	public Set<Integer> getNodesSecondaryPartitions(List<Integer> nodes) {
-		Set<Integer> res = new HashSet<>();		
+	/*
+	 * May return duplicates, because the same partition can be in multiple secondary nodes.
+	 */
+	public List<PartitionTableEntry> getNodesSecondaryPartitions(List<Integer> nodes) {
+		List<PartitionTableEntry> res = new ArrayList<>();		
 		for (PartitionTableEntry entry : this.getPartitionEntries().values()) {
-			for (Node secNode : entry.getSecondaryNodes()) {
+			for (NodeEntry secNode : entry.getSecondaryNodes()) {
 				boolean found = false;
 				for (Integer nodeId : nodes) {
 					if (secNode.getId() == nodeId) {
-						res.add(entry.getPartitionId());
+						res.add(entry);
 						found = true;
 						break;
 					}	
@@ -120,6 +120,33 @@ public class PartitionTable {
 			}
 		}			
 		return res;
+	}
+
+	public void markNodeAsDeleted(NodeEntry node) {
+		node.markDeleted();		
+	}
+	
+	/**
+	 * Delete nodes from all tables and lists.
+	 */
+	public void deleteNodes(List<NodeEntry> deletedNodes) {		
+		for (NodeEntry deletedNode : deletedNodes) {
+			nodeEntries.remove(deletedNode.getId()); 
+		}		
+	}
+	
+	public void deleteAll() {		
+		getNodes().clear(); //delete nodes
+		
+		for (PartitionTableEntry entry : partitionEntries.values()) {
+			entry.removePrimaryNode(entry.getPrimaryNode().getId());
+			
+			for (NodeEntry n : entry.getSecondaryNodes()) {
+				entry.removeSecondaryNode(n.getId());
+			}
+		}		
+		
+		this.nodeEntries.clear();
 	}
 	
 	@Override
@@ -132,41 +159,21 @@ public class PartitionTable {
 		System.out.printf("partition | primary | secondary%n");
 		
 		for (int i = 0; i < this.getPartitionsSize(); i ++) {
-			PartitionTableEntry entry = this.partitionEntries.get(i);
-			
-			List<Integer> sec = new ArrayList<>();
-			List<Node> secNodes = entry.getSecondaryNodes();
-			for (Node secNode : secNodes) {
-				sec.add(secNode.getId());
-			} 
-				
-			System.out.printf("%9s | %7s | %s%n", entry.getPartitionId(), entry.getPrimaryNode(), sec);
+			PartitionTableEntry entry = this.partitionEntries.get(i);									
+			System.out.printf("%9s | %7s | %s%n", entry.getPartitionId(), entry.getPrimaryNode(), entry.getSecondaryNodes());
 		}
 		
 		System.out.println();		
 	}
-
-	public void markNodeAsDeleted(Node node) {
-		node.markDeleted();		
-	}
-
-	/**
-	 * Delete nodes from all tables and lists.
-	 */
-	public void deleteNodes(List<Node> deletedNodes) {		
-		for (Node deletedNode : deletedNodes) {
-			nodes.remove(deletedNode.getId()); 
-		}		
+	
+	
+	//------------------- TODO: remove: start
+	
+	private Map<Integer, Node> nodes = new HashMap<>();
+	
+	public Map<Integer, Node> getNodes() {
+		return nodes;
 	}
 	
-	public void deleteAll() {
-		this.nodes.clear();
-		
-		for (PartitionTableEntry entry : partitionEntries.values()) {
-			entry.removePrimaryNode(entry.getPrimaryNode());
-			for (Node n : entry.getSecondaryNodes()) {
-				entry.removeSecondaryNode(n);
-			}
-		}		
-	}
+	//------------------- remove: end
 }

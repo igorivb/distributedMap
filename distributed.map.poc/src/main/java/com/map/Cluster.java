@@ -11,47 +11,44 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.map.Node.NodeSection;
-
 public class Cluster {
 
 	private static final Logger logger = LoggerFactory.getLogger(Cluster.class);
 
 	//table of partitions
-	private PartitionTable pt;
-	
+	private PartitionTable pt;		
 	
 	/*
 	 * Node comparators. Default sorting: desc
 	 */
-	static class NodesComparator implements Comparator<Node> {
+	static class NodesComparator implements Comparator<NodeEntry> {
 		NodeSection nodeSection;
 		public NodesComparator(NodeSection nodeSection) {
 			this.nodeSection = nodeSection;
 		}
 		@Override
-		public int compare(Node o1, Node o2) {
-			int n1 = o1.getData(nodeSection).size();
-			int n2 = o2.getData(nodeSection).size();
+		public int compare(NodeEntry o1, NodeEntry o2) {
+			int n1 = o1.getPartitionsCount(nodeSection);
+			int n2 = o2.getPartitionsCount(nodeSection);
 			return n1 == n2 ? 0 : (n1 < n2 ? 1 : -1);
 		}		
 	}	
-	static class ReversedNodesComparator implements Comparator<Node> {
-		Comparator<Node> cmp;
-		public ReversedNodesComparator(Comparator<Node> cmp) {
+	static class ReversedNodesComparator implements Comparator<NodeEntry> {
+		Comparator<NodeEntry> cmp;
+		public ReversedNodesComparator(Comparator<NodeEntry> cmp) {
 			this.cmp = cmp;
 		}
 		@Override
-		public int compare(Node o1, Node o2) {
+		public int compare(NodeEntry o1, NodeEntry o2) {
 			return cmp.compare(o2, o1);
 		}		
 	}
 	//desc
-	Comparator<Node> primaryNodesDescCmp = new NodesComparator(NodeSection.PRIMARY);
-	Comparator<Node> secondaryNodesDescCmp = new NodesComparator(NodeSection.SECONDARY);
+	private Comparator<NodeEntry> primaryNodesDescCmp = new NodesComparator(NodeSection.PRIMARY);
+	private Comparator<NodeEntry> secondaryNodesDescCmp = new NodesComparator(NodeSection.SECONDARY);
 	//asc
-	Comparator<Node> primaryNodesAscCmp = new ReversedNodesComparator(primaryNodesDescCmp);
-	Comparator<Node> secondaryNodesAscCmp = new ReversedNodesComparator(secondaryNodesDescCmp);
+	private Comparator<NodeEntry> primaryNodesAscCmp = new ReversedNodesComparator(primaryNodesDescCmp);
+	private Comparator<NodeEntry> secondaryNodesAscCmp = new ReversedNodesComparator(secondaryNodesDescCmp);
 	
 	
 	public Cluster(int replicationFactor, int partitionsCount) {
@@ -69,15 +66,20 @@ public class Cluster {
 	 * e.g. some partitions may be available only in secondary or lost at all. 
 	 * Is seems it should be handled by 'remove' and 'add' operation should be stopped.		
 	 */
-	public void addNode(Node newNode) {
-		logger.info("Adding node: {}", newNode.getId());
+	public void addNode(NodeEntry newNode) {
+		logger.info("Adding node: {}", newNode);
 		
 		boolean isClusterFull = pt.getNodesSize() == pt.getPartitionsSize();		
 		boolean isClusterEmpty = pt.getNodesSize() == 0;
 		boolean isBalanced = pt.getNodesSize() >= pt.getReplicationFactor() + 1; 
 		
 		if (!isClusterFull) { //TODO: remove condition when we can expand cluster if it is full
-			pt.addNode(newNode);
+			
+			Node node;
+			pt.getNodes().put(newNode.getId(), node = new Node(newNode.getId(), newNode.getAddress())); //create node
+			node.setPartitionTable(pt);		
+			
+			pt.addNodeEntry(newNode); //update PartitionTable						
 		}
 		
 		boolean added = true;
@@ -88,7 +90,7 @@ public class Cluster {
 		} else {			
 			logger.info("Is balanced: {}", isBalanced);
 			
-			List<Partition> primaryPartitions = processAddPrimary(newNode, isBalanced);
+			List<PartitionTableEntry> primaryPartitions = processAddPrimary(newNode, isBalanced);
 			
 			if (pt.hasReplica()) {
 				processAddSecondary(newNode, isBalanced, primaryPartitions);
@@ -111,12 +113,12 @@ public class Cluster {
 	 *   e.g. partitions may be not balanced if 'remove' occurred in the middle of 'add' 
 	 *   where only part of partitions were re-distributed. 
 	 */
-	public void removeNodes(List<Node> deletedNodes) {
+	public void removeNodes(List<NodeEntry> deletedNodes) {
 		logger.info("Removing nodes: {}", deletedNodes);
 		
 		//check if we have nodes to delete
-		for (Node deletedNode : deletedNodes) {
-			Node n = pt.getNode(deletedNode.getId());
+		for (NodeEntry deletedNode : deletedNodes) {
+			NodeEntry n = pt.getNodeEntry(deletedNode.getId());
 			if (n == null) {
 				throw new RuntimeException(String.format("Failed to delete nodes, node: %s doesn't exist", deletedNode));
 			}
@@ -125,7 +127,7 @@ public class Cluster {
 		boolean deleteAllNodes = deletedNodes.size() == pt.getNodesSize();
 		
 		if (!deleteAllNodes) {
-			for (Node node : deletedNodes) { //mark nodes as deleted
+			for (NodeEntry node : deletedNodes) { //mark nodes as deleted
 				pt.markNodeAsDeleted(node);
 			}				
 					
@@ -137,11 +139,16 @@ public class Cluster {
 			
 			balanceRemoveNodes(deletedNodes);
 					
+			for (NodeEntry deleted : deletedNodes) { //delete nodes
+				pt.getNodes().remove(deleted);
+			}
+			
 			pt.deleteNodes(deletedNodes);
 						
 			checkClusterPartitions(true);
 		} else {
-			logger.info("Deleting all nodes");
+			logger.info("Deleting all nodes");			
+			
 			pt.deleteAll();
 		}						
 	}
@@ -150,9 +157,9 @@ public class Cluster {
 	 * Restore from primary if needed.
 	 * If needed, remove extra secondary nodes.
 	 */
-	private void processRemoveSecondary(List<Node> deletedNodes) {
+	private void processRemoveSecondary(List<NodeEntry> deletedNodes) {
 		//potential target nodes (sort them before usage), exclude deleted nodes 
-		List<Node> targetNodes = getNodes(deletedNodes);
+		List<NodeEntry> targetNodes = getNodes(deletedNodes);
 		
 		int currentRF = Math.min(pt.getReplicationFactor(), targetNodes.size() - 1);
 		
@@ -171,33 +178,32 @@ public class Cluster {
 					Collections.sort(targetNodes, secondaryNodesDescCmp);
 					
 					for (int i = 0; i < diff; i ++) {						
-						Node targetNode = targetNodes.get(i);
+						NodeEntry targetNode = targetNodes.get(i);
 						logger.debug("Delete secondary partition from node, node: {}, partition: {}", targetNode, partId);						
-						targetNode.deleteSecondaryPartition(partId);																		
+						deleteSecondaryPartition(targetNode, partId);																		
 					}
 				}
 			}
 		}
 		
 		//restore secondary if needed
-		for (Node deletedNode : deletedNodes) { //iterate nodes
-			Set<Integer> deletedSecParts = pt.getNodesSecondaryPartitions(Arrays.asList(deletedNode.getId()));
+		for (NodeEntry deletedNode : deletedNodes) { //iterate nodes			
+			List<PartitionTableEntry> deletedSecParts = deletedNode.getSecondaryPartitions();
 			logger.debug("Restoring secondary partitions deleted on node: {}, partitions: {}", deletedNode.getId(), deletedSecParts);
 			
-			for (Integer deletedSecPart : deletedSecParts) { //iterate partitions								
-				PartitionTableEntry entry = pt.getEntryForPartition(deletedSecPart);
-				int diff = currentRF - excludeDeletedNodes(entry.getSecondaryNodes()).size();				
+			for (PartitionTableEntry deletedSecPart : deletedSecParts) { //iterate partitions								
+				int diff = currentRF - excludeDeletedNodes(deletedSecPart.getSecondaryNodes()).size();				
 				
 				logger.debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
 				
 				if (diff == 0) { //need to restore ?
 					logger.debug("No need to restore secondary partition: {}", deletedSecPart);
 				} else {
-					Node primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart);
+					NodeEntry primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart.getPartitionId());
 					if (primaryNode != null) { //restore						
 						//find target node
 						Collections.sort(targetNodes, secondaryNodesAscCmp);							
-						Node targetNode = findTargetNode(targetNodes, deletedSecPart, NodeSection.SECONDARY);							
+						NodeEntry targetNode = findTargetNode(targetNodes, deletedSecPart, NodeSection.SECONDARY);							
 																											
 						/*
 						 * It may copy empty partition if there was data loss.
@@ -222,21 +228,21 @@ public class Cluster {
 				}
 				
 				//remove previous entry
-				entry.removeSecondaryNode(deletedNode);
+				deletedSecPart.removeSecondaryNode(deletedNode.getId());
 			}		
 		}			
 	}		
 	
 	//Try to avoid collisions between primary and secondary.
-	private Node findTargetNode(List<Node> targetNodes, int partitionId, NodeSection section) {
-		Node withCollision = null;
+	private NodeEntry findTargetNode(List<NodeEntry> targetNodes, PartitionTableEntry partitionId, NodeSection section) {
+		NodeEntry withCollision = null;
 		
-		for (Node tg : targetNodes) {
-			if (!tg.hasPartition(partitionId, section)) { //check if contains in section
-				if (!tg.hasPartition(partitionId, NodeSection.reverse(section))) { //check if there is collision
-					return tg;
+		for (NodeEntry targetNode : targetNodes) {
+			if (!targetNode.hasPartition(partitionId.getPartitionId(), section)) { //check if contains in section
+				if (!targetNode.hasPartition(partitionId.getPartitionId(), NodeSection.reverse(section))) { //check if there is collision
+					return targetNode;
 				} else if (withCollision == null) {
-					withCollision = tg;
+					withCollision = targetNode;
 				}				
 			}
 		}		
@@ -251,45 +257,45 @@ public class Cluster {
 	 * Restore deleted primary partitions from secondary nodes, if there are any, 
 	 * otherwise create empty partitions. 
 	 */
-	private void processRemovePrimary(List<Node> deletedNodes) {						
+	private void processRemovePrimary(List<NodeEntry> deletedNodes) {						
 		//sort nodes by primaryData.len asc		
-		List<Node> targetNodes = getNodes(deletedNodes);
+		List<NodeEntry> targetNodes = getNodes(deletedNodes);
 		
-		List<Integer> deletedPrimaryParts = this.getDeletedPrimaryPartitions(deletedNodes);
+		List<PartitionTableEntry> deletedPrimaryParts = this.getDeletedPrimaryPartitions(deletedNodes);
 		
 		logger.info("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
 		
-		for (Integer deletedPrimaryPart : deletedPrimaryParts) {			
+		for (PartitionTableEntry deletedPrimaryPart : deletedPrimaryParts) {			
 			logger.debug("Handle deleted primary partition: {}", deletedPrimaryPart);
 			
 			Collections.sort(targetNodes, primaryNodesAscCmp);
 			
 			//find nodes which contain deleted partition
-			List<Node> secNodes = excludeDeletedNodes(pt.getSecondaryNodesForPartition(deletedPrimaryPart));
+			List<NodeEntry> secNodes = excludeDeletedNodes(deletedPrimaryPart.getSecondaryNodes());
 			
 			logger.debug("Secondary nodes which contain deleted partition: {}, nodes: {}", deletedPrimaryPart, secNodes);
 			if (!secNodes.isEmpty()) {
-				Node replicaNode = secNodes.get(0); //take first one
+				NodeEntry replicaNode = secNodes.get(0); //take first one
 				
 				//get node with minimum primary
-				Node targetNode = findTargetNode(targetNodes, deletedPrimaryPart, NodeSection.PRIMARY);
+				NodeEntry targetNode = findTargetNode(targetNodes, deletedPrimaryPart, NodeSection.PRIMARY);
 				
 				copyPartition(replicaNode, deletedPrimaryPart, NodeSection.SECONDARY, targetNode, NodeSection.PRIMARY);				
 			} else { //data loss
 				//create new partition and register it in PartitionTable
 				
-				Node targetNode = targetNodes.get(0);
+				NodeEntry targetNode = targetNodes.get(0);
 				
-				logger.warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);
-																
-				targetNode.createPartition(NodeSection.PRIMARY, deletedPrimaryPart);
+				logger.warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);						
+				
+				createPartition(targetNode, NodeSection.PRIMARY, deletedPrimaryPart.getPartitionId());
 			}
 		}
 	}		
 	
-	private List<Node> excludeDeletedNodes(List<Node> nodes) {
-		List<Node> res = new ArrayList<>();
-		for (Node node : nodes) {
+	private List<NodeEntry> excludeDeletedNodes(List<NodeEntry> nodes) {
+		List<NodeEntry> res = new ArrayList<>();
+		for (NodeEntry node : nodes) {
 			if (!node.isDeleted()) {
 				res.add(node);
 			}
@@ -297,27 +303,27 @@ public class Cluster {
 		return res;
 	}
 	
-	private List<Integer> getDeletedPrimaryPartitions(List<Node> deletedNodes) {
+	private List<PartitionTableEntry> getDeletedPrimaryPartitions(List<NodeEntry> deletedNodes) {
 		List<Integer> nodes = new ArrayList<>();
-		for (Node deletedNode : deletedNodes) {
+		for (NodeEntry deletedNode : deletedNodes) {
 			nodes.add(deletedNode.getId());
 		}
 		return pt.getNodesPrimaryPartitions(nodes);
 	}
 
-	private void balanceRemoveNodes(List<Node> nodesToDelete) {
+	private void balanceRemoveNodes(List<NodeEntry> nodesToDelete) {
 		//TODO: implement		
 	}
 	
-	private void processAddSecondary(Node newNode, boolean isBalanced, List<Partition> primaryPartitions) {				
+	private void processAddSecondary(NodeEntry newNode, boolean isBalanced, List<PartitionTableEntry> primaryPartitions) {				
 		if (isBalanced) {									
 			int num = (pt.getPartitionsSize() * pt.getReplicationFactor()) / pt.getNodesSize(); //ignore remaining part of division
 			logger.debug("Processing add secondary: balanced, num: {}", num);
 			
-			Set<Partition> addedParts = new HashSet<>(primaryPartitions); 
+			Set<PartitionTableEntry> addedParts = new HashSet<>(primaryPartitions); 
 			
 			//sort nodes by secondaryData.len desc
-			List<Node> sortedNodes = getNodes(Arrays.asList(newNode));			
+			List<NodeEntry> sortedNodes = getNodes(Arrays.asList(newNode));			
 									
 			for (int i = 0; i < num;) {	
 				if (sortedNodes.isEmpty()) {
@@ -326,17 +332,17 @@ public class Cluster {
 				}
 				Collections.sort(sortedNodes, secondaryNodesDescCmp);
 				
-				Node node = sortedNodes.get(0);
+				NodeEntry node = sortedNodes.get(0);
 				
 				//find first partition which is not already present in primary and secondary
-				Partition part = null;
-				for (Partition p : node.getSecondaryData()) {
+				PartitionTableEntry part = null;
+				for (PartitionTableEntry p : node.getSecondaryPartitions()) {
 					if (!addedParts.contains(p)) {
 						part = p;
 						addedParts.add(part);
 						break;
 					} else {
-						logger.debug("Don't add secondary partition: '{}' in node {}, because it already exists", p.getId(), node.getId());
+						logger.debug("Don't add secondary partition: '{}' in node {}, because it already exists", p, node);
 					}
 				}
 				if (part == null) { //don't process this node any more
@@ -344,7 +350,7 @@ public class Cluster {
 					continue;
 				}
 												
-				movePartition(node, part.getId(), NodeSection.SECONDARY, newNode, NodeSection.SECONDARY);
+				movePartition(node, part, NodeSection.SECONDARY, newNode, NodeSection.SECONDARY);
 										
 				i ++;
 			}		
@@ -352,36 +358,36 @@ public class Cluster {
 			logger.debug("Processing secondary: not balanced");
 			
 			//copy all primary to new node's secondary
-			for (Node node : getNodes(Arrays.asList(newNode))) {
-				for (Partition part : node.getPrimaryData()) {
-					copyPartition(node, part.getId(), NodeSection.PRIMARY, newNode, NodeSection.SECONDARY);
+			for (NodeEntry node : getNodes(Arrays.asList(newNode))) {
+				for (PartitionTableEntry part : node.getPrimaryPartitions()) {
+					copyPartition(node, part, NodeSection.PRIMARY, newNode, NodeSection.SECONDARY);
 				}
 			}
 		}				
 	}	
-
-	private List<Partition> processAddPrimary(Node newNode, boolean isBalanced) {								
+	
+	private List<PartitionTableEntry> processAddPrimary(NodeEntry newNode, boolean isBalanced) {								
 		int num = pt.getPartitionsSize() / pt.getNodesSize(); //ignore remaining part of division
 		logger.debug("Processing add primary, num: {}", num);
 		
-		List<Partition> primaryPartitions = new ArrayList<>();
+		List<PartitionTableEntry> primaryPartitions = new ArrayList<>();
 		
 		//sort nodes by primaryData.len desc		
-		List<Node> sortedNodes = getNodes(Arrays.asList(newNode));
+		List<NodeEntry> sortedNodes = getNodes(Arrays.asList(newNode));
 		
 		for (int i = 0; i < num; i ++) {
 			Collections.sort(sortedNodes, primaryNodesDescCmp);
 			
-			Node node = sortedNodes.get(0);
-			Partition p1 = node.getPrimaryData().get(0);
+			NodeEntry node = sortedNodes.get(0);
+			PartitionTableEntry p1 = node.getPrimaryPartitions().get(0);
 			
 			if (isBalanced) {
-				movePartition(node, p1.getId(), NodeSection.PRIMARY, newNode, NodeSection.PRIMARY);
+				movePartition(node, p1, NodeSection.PRIMARY, newNode, NodeSection.PRIMARY);
 			} else {
-				copyPartition(node, p1.getId(), NodeSection.PRIMARY, newNode, NodeSection.PRIMARY);
+				copyPartition(node, p1, NodeSection.PRIMARY, newNode, NodeSection.PRIMARY);
 				
 				//TODO: don't need extra 'copy' here: move right away
-				movePartition(node, p1.getId(), NodeSection.PRIMARY, node, NodeSection.SECONDARY);	//move partition to the same node's secondary section
+				movePartition(node, p1, NodeSection.PRIMARY, node, NodeSection.SECONDARY);	//move partition to the same node's secondary section
 			}												
 			
 			primaryPartitions.add(p1);
@@ -389,9 +395,9 @@ public class Cluster {
 		return primaryPartitions;
 	}	
 	
-	private List<Node> getNodes(List<Node> exclude) {
-		List<Node> nodes = new ArrayList<>();
-		for (Node n : pt.getNodes()) {
+	private List<NodeEntry> getNodes(List<NodeEntry> exclude) {
+		List<NodeEntry> nodes = new ArrayList<>();
+		for (NodeEntry n : pt.getNodeEntries()) {
 			if (!exclude.contains(n)) {
 				nodes.add(n);
 			}
@@ -399,35 +405,49 @@ public class Cluster {
 		return nodes;
 	}
 
-	private void copyPartition(Node src, int srcPartId, NodeSection srcSection, Node dest, NodeSection destSection) {
+	private void copyPartition(
+		NodeEntry src, PartitionTableEntry srcPartId, NodeSection srcSection,
+		NodeEntry dest, NodeSection destSection) /*throws IOException*/ {
+		
 		transferPartition(false, src, srcPartId, srcSection, dest, destSection);		
 	}
 	
-	private void movePartition(Node src, int srcPartId, NodeSection srcSection, Node dest, NodeSection destSection) {
+	private void movePartition(
+		NodeEntry src, PartitionTableEntry srcPartId, NodeSection srcSection, 
+		NodeEntry dest, NodeSection destSection) /*throws IOException*/ {
+		
 		transferPartition(true, src, srcPartId, srcSection, dest, destSection);		
 	}
-
+	
 	/*
 	 * TODO: There are possible local copies and removes - handle appropriately.
 	 */
-	private void transferPartition(boolean isMove, Node src, int srcPartId, NodeSection srcSection, Node dest, NodeSection destSection) {
+	private void transferPartition(boolean isMove, 
+		NodeEntry srcEntry, PartitionTableEntry srcPartEntry, NodeSection srcSection, 
+		NodeEntry destEntry, NodeSection destSection) /*throws IOException*/ {
+		
 		logger.debug((!isMove ? "Copying" : "Moving ") + 
 			" partition '{}' from '{}'.{} to '{}'.{}", 
-			srcPartId, src.getId(), srcSection, dest.getId(), destSection);
-			
+			srcPartEntry, srcEntry.getId(), srcSection, destEntry.getId(), destSection);			
+		
+		Node src = pt.getNodes().get(srcEntry.getId());
+		Node dest = pt.getNodes().get(destEntry.getId());
+		
 		Partition srcPart = null;
 		for (Partition part : src.getData(srcSection)) {
-			if (part.getId() == srcPartId) {
+			if (part.getId() == srcPartEntry.getPartitionId()) {
 				srcPart = part;
 				break;
 			}
 		}
 		if (srcPart == null) {
 			throw new RuntimeException(
-				String.format("Failed to find partition in node. Node: %s, partition: %s", src, srcPartId));
+				String.format("Failed to find partition in node. Node: %s, partition: %s", srcEntry, srcPart));
 		}
 		
-		dest.addPartition(destSection, srcPart);
+		//make actual copy
+		Partition copy = srcPart.copy();
+		dest.addPartition(destSection, copy);
 		
 		if (isMove) { //delete from src			
 			//logger.debug("Deleting partition '{}' from {} node, isPrimary: {}", srcPart.getId(), src.getId(), isSrcPrimary);			
@@ -435,22 +455,31 @@ public class Cluster {
 		}	
 		
 		//update partition table
-		PartitionTableEntry ptEntry = pt.getEntryForPartition(srcPartId);
-		
 		if (isMove) {			
 			if (srcSection == NodeSection.PRIMARY) {		
-				ptEntry.removePrimaryNode(src);
+				srcPartEntry.removePrimaryNode(srcEntry.getId());
 			} else {
-				ptEntry.removeSecondaryNode(src);
+				srcPartEntry.removeSecondaryNode(srcEntry.getId());
 			}
 		}				
 		
 		if (destSection == NodeSection.PRIMARY) {
-			ptEntry.setPrimaryNode(dest);
+			srcPartEntry.setPrimaryNode(destEntry.getId());
 		} else {
-			ptEntry.addSecondaryNode(dest);
+			srcPartEntry.addSecondaryNode(destEntry.getId());
 		}		
 	}
+	
+	public void createPartition(NodeEntry nodeEntry, NodeSection section, int partitionId) {
+		Node node = pt.getNodes().get(nodeEntry.getId());		
+		node.createPartition(section, partitionId);		
+	}
+	
+	public void deleteSecondaryPartition(NodeEntry nodeEntry, int partitionId) {
+		Node node = pt.getNodes().get(nodeEntry.getId());
+		node.deleteSecondaryPartition(partitionId);		
+	}
+	
 
 	/*
 	 * TODO: Possible strategies:
@@ -466,16 +495,16 @@ public class Cluster {
 	 * 3. Increase partitionsCount, e.g. double, and re-distribute nodes
 	 * Probably it is best option, but do it later.
 	 */
-	private boolean clusterFull(Node newNode) {
+	private boolean clusterFull(NodeEntry newNode) {
 		logger.warn("Cluster is full, do nothing. partitionsCount: {}, nodesCount: {}", pt.getPartitionsSize(), pt.getNodesSize());
 		return false;
 	}
 
-	private void initCluster(Node newNode) {
-		logger.info("Cluster is empty, init first node");				
+	private void initCluster(NodeEntry newNode) {
+		logger.info("Cluster is empty, init first node");								
 		
-		for (int i = 0; i < pt.getPartitionsSize(); i ++) { //create primary partitions
-			newNode.createPartition(NodeSection.PRIMARY, i);			
+		for (int i = 0; i < pt.getPartitionsSize(); i ++) { //create primary partitions							
+			createPartition(newNode, NodeSection.PRIMARY, i);			
 		}					
 	}
 	
@@ -484,29 +513,29 @@ public class Cluster {
 	}
 	
 	public void checkClusterPartitions(boolean checkCollisions) {
-		Set<Partition> primaryTotal = new HashSet<>();
+		Set<PartitionTableEntry> primaryTotal = new HashSet<>();
 		int secondaryTotal = 0;
 		
 		List<String> errors = new ArrayList<>();
 				
-		for (Node n : pt.getNodes()) {
-			primaryTotal.addAll(n.getPrimaryData());
-			secondaryTotal += n.getSecondaryData().size();			
+		for (NodeEntry n : pt.getNodeEntries()) {
+			primaryTotal.addAll(n.getPrimaryPartitions());
+			secondaryTotal += n.getSecondaryPartitions().size();			
 			
 			//check collisions
 			if (checkCollisions) {
-				for (Partition p : n.getSecondaryData()) {
-					if (n.getPrimaryData().contains(p)) {
+				for (PartitionTableEntry p : n.getSecondaryPartitions()) {
+					if (n.getPrimaryPartitions().contains(p)) {
 						errors.add(String.format("Secondary and primary collide for node: %s", n.getId()));
 					}
 				}		
 			}
 			
 			//duplicates
-			if (n.getPrimaryData().size() != new HashSet<>(n.getPrimaryData()).size()) {
+			if (n.getPrimaryPartitionsCount() != new HashSet<>(n.getPrimaryPartitions()).size()) {
 				errors.add("There are duplicates in primary: " + n.getId());
 			}
-			if (n.getSecondaryData().size() != new HashSet<>(n.getSecondaryData()).size()) {
+			if (n.getSecondaryPartitionsCount() != new HashSet<>(n.getSecondaryPartitions()).size()) {
 				errors.add("There are duplicates in secondary: " + n.getId());
 			}
 		}		

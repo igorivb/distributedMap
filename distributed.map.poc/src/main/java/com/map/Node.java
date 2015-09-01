@@ -8,25 +8,13 @@ import java.util.List;
 import java.util.Map;
 
 
-public class Node {
-
-	enum NodeStatus { NORMAL, DELETED }
-	
-	//Use enum instead of boolean to indicate primary and secondary for better code readability.
-	enum NodeSection { 
-		PRIMARY, SECONDARY;
-		
-		static NodeSection reverse(NodeSection section) {
-			return section == PRIMARY ? SECONDARY : PRIMARY;
-		}
-	}
-	
+public class Node {				
 	
 	private final int id;
 	
 	private final InetAddress address;
 	
-	private NodeStatus status;
+	private NodeStatus status; //TODO: do we need it?
 	
 	private PartitionTable pt;
 	
@@ -35,6 +23,8 @@ public class Node {
 	private List<Partition> secondaryData = new ArrayList<>();
 	
 	private Map<String, NodeMap<?, ?>> maps = new HashMap<>();
+	
+	private List<RemoteNode> nodes = new ArrayList<>();
 	
 	public Node(int id, InetAddress address) {
 		this.id = id;
@@ -53,14 +43,6 @@ public class Node {
 	public boolean isDeleted() {
 		return this.status == NodeStatus.DELETED;
 	}
-	
-//	public int getPrimaryPartitionsCount() {
-//		return this.primaryData.size();
-//	}
-//	
-//	public int getSecondaryPartitionsCount() {
-//		return this.secondaryData.size();
-//	}
 	
 	@Override
 	public boolean equals(Object obj) {
@@ -126,11 +108,11 @@ public class Node {
 	
 	
 	public void start() {
-		//TODO
+		//implement
 	}
 	
 	private void discoveryNodes() {
-		//TODO
+		//implement
 	}
 
 	public void addPartition(NodeSection section, Partition partition) {				
@@ -149,7 +131,7 @@ public class Node {
 		}				
 	}
 
-	public void markDeleted() {
+	public void markDeleted() { //TODO: do we need it?
 		this.status = NodeStatus.DELETED;
 	}
 
@@ -158,9 +140,9 @@ public class Node {
 		getData(section).add(part);
 		
 		if (section == NodeSection.PRIMARY) {
-			pt.getEntryForPartition(partitionId).setPrimaryNode(this);
+			pt.getEntryForPartition(partitionId).setPrimaryNode(this.getId());
 		} else {
-			pt.getEntryForPartition(partitionId).addSecondaryNode(this);	
+			pt.getEntryForPartition(partitionId).addSecondaryNode(this.getId());	
 		}
 		
 		return part;
@@ -173,7 +155,7 @@ public class Node {
 			if (part.getId() == partitionId) {
 				iter.remove();				
 				
-				pt.getEntryForPartition(partitionId).removeSecondaryNode(this);				
+				pt.getEntryForPartition(partitionId).removeSecondaryNode(this.getId());				
 				return;
 			}
 		}

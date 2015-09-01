@@ -8,8 +8,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.map.Node.NodeSection;
-
 /**
  * TODO: 
  * 1. handle that nodes may go down during operations, partitions are not available etc.
@@ -44,7 +42,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 				
 		logger.debug("Put Request: node: {}, partition: {}, key: '{}'", curNode, partitionId, key);
 		
-		Node primaryNode = pt.getPrimaryNodeForPartition(partitionId);				
+		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId);				
 		logger.debug("Put: primary node: {}", primaryNode);
 		
 		V res;
@@ -55,9 +53,9 @@ public class NodeMap<K, V> implements Map<K, V> {
 		}	
 
 		//secondary nodes: wait for operations to complete
-		List<Node> secNodes = pt.getSecondaryNodesForPartition(partitionId);
+		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
 		logger.debug("Put: secondary nodes: {}", secNodes);
-		for (Node secNode : secNodes) {			
+		for (NodeEntry secNode : secNodes) {			
 			getNodeMap(secNode, mapId).putLocal(key, value, partitionId, NodeSection.SECONDARY);
 		}
 		
@@ -75,7 +73,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 		
 		logger.debug("Remove Request: node: {}, partition: {}, key: '{}'", curNode, partitionId, key);
 								
-		Node primaryNode = pt.getPrimaryNodeForPartition(partitionId);
+		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId);
 		logger.debug("Remove: primary node: {}", primaryNode);
 		
 		V res;
@@ -86,9 +84,9 @@ public class NodeMap<K, V> implements Map<K, V> {
 		}
 						
 		//secondary nodes: wait for operations to complete
-		List<Node> secNodes = pt.getSecondaryNodesForPartition(partitionId);
+		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
 		logger.debug("Remove: secondary nodes: {}", secNodes);
-		for (Node secNode : secNodes) {			
+		for (NodeEntry secNode : secNodes) {			
 			getNodeMap(secNode, mapId).removeLocal(key, partitionId, NodeSection.SECONDARY);
 		}			
 		
@@ -104,10 +102,10 @@ public class NodeMap<K, V> implements Map<K, V> {
 		
 		logger.debug("Get Request: node: {}, partition: {}, key: '{}'", curNode, partitionId, key);
 								
-		Node node = pt.getPrimaryNodeForPartition(partitionId); 
+		NodeEntry node = pt.getPrimaryNodeForPartition(partitionId); 
 		NodeSection section = NodeSection.PRIMARY;
 		if (node == null) {
-			List<Node> secNodes = pt.getSecondaryNodesForPartition(partitionId);
+			List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
 			node = secNodes.get(0); //take first
 			section = NodeSection.SECONDARY;
 		}	
@@ -131,7 +129,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 		logger.debug("Size Request");
 		
 		int size = 0;
-		for (Node node : pt.getNodes()) {
+		for (NodeEntry node : pt.getNodeEntries()) {
 			size += getNodeMap(node, mapId).sizeLocal();
 		}
 		return size;
@@ -143,7 +141,8 @@ public class NodeMap<K, V> implements Map<K, V> {
 	}
 	
 	@SuppressWarnings("unchecked")
-	private NodeMap<K, V> getNodeMap(Node node, String mapId) {
+	private NodeMap<K, V> getNodeMap(NodeEntry nodeEntry, String mapId) {
+		Node node = pt.getNodes().get(nodeEntry.getId());
 		return (NodeMap<K, V>) node.getMap(mapId);
 	}
 	
@@ -180,43 +179,42 @@ public class NodeMap<K, V> implements Map<K, V> {
 
 	@Override
 	public boolean containsKey(Object key) {
-		// TODO Auto-generated method stub
+		//implement
 		return false;
 	}
 
 	@Override
 	public boolean containsValue(Object value) {
-		// TODO Auto-generated method stub
+		//implement
 		return false;
 	}
 
 	@Override
 	public void putAll(Map<? extends K, ? extends V> m) {
-		// TODO Auto-generated method stub
-		
+		//implement		
 	}
 
 	@Override
 	public void clear() {
-		// TODO Auto-generated method stub
+		//implement
 		
 	}
 
 	@Override
 	public Set<K> keySet() {
-		// TODO Auto-generated method stub
+		//implement
 		return null;
 	}
 
 	@Override
 	public Collection<V> values() {
-		// TODO Auto-generated method stub
+		//implement
 		return null;
 	}
 
 	@Override
 	public Set<java.util.Map.Entry<K, V>> entrySet() {
-		// TODO Auto-generated method stub
+		//implement
 		return null;
 	}
 
