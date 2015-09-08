@@ -1,13 +1,15 @@
 package com.map;
 
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
-public class NodeEntry {
+public class NodeEntry implements Serializable {
 	
-	private final int id;
+	private static final long serialVersionUID = -2847324433652812586L;
+
+	private final int nodeId;
 	
 	private final InetAddress address;
 	
@@ -15,14 +17,14 @@ public class NodeEntry {
 	
 	private PartitionTable pt;
 	
-	public NodeEntry(int id, InetAddress address) {
-		this.id = id;
+	public NodeEntry(int nodeId, InetAddress address) {
+		this.nodeId = nodeId;
 		this.address = address;
 		this.status = NodeStatus.NORMAL;				
 	}
 
-	public int getId() {
-		return id;
+	public int getNodeId() {
+		return nodeId;
 	}
 
 	public InetAddress getAddress() {
@@ -46,11 +48,11 @@ public class NodeEntry {
 	}
 
 	public List<PartitionTableEntry> getPrimaryPartitions() {
-		return pt.getNodesPrimaryPartitions(Arrays.asList(this.id));
+		return pt.getNodesPrimaryPartitions(Arrays.asList(this.nodeId));
 	}
 	
 	public List<PartitionTableEntry> getSecondaryPartitions() {
-		return pt.getNodesSecondaryPartitions(Arrays.asList(this.id));
+		return pt.getNodesSecondaryPartitions(Arrays.asList(this.nodeId));
 	}
 	
 	public int getPrimaryPartitionsCount() {
@@ -85,7 +87,7 @@ public class NodeEntry {
 		}		
 		if (obj instanceof NodeEntry) {
 			NodeEntry n = (NodeEntry) obj;
-			return this.id == n.getId();					
+			return this.nodeId == n.getNodeId();					
 		}		
 		return false;
 	}
@@ -94,12 +96,12 @@ public class NodeEntry {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
-		result = prime * result + id;
+		result = prime * result + nodeId;
 		return result;
 	}
 	
 	@Override
 	public String toString() {	
-		return String.valueOf(this.id);
+		return String.valueOf(this.nodeId);
 	}
 }

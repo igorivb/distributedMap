@@ -9,6 +9,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * Server side implementation of Map. It is used directly by Node.
+ * Clients and other nodes can't call it directly.
+ * 
+ * TODO: show it on UML diagram ?
+ * 
  * TODO: 
  * 1. handle that nodes may go down during operations, partitions are not available etc.
  * 2. getPrimaryNodeForPartition, getSecondaryNodesForPartition - may return 'removed' nodes, but we need only normal
@@ -46,17 +51,17 @@ public class NodeMap<K, V> implements Map<K, V> {
 		logger.debug("Put: primary node: {}", primaryNode);
 		
 		V res;
-		if (curNode.getId() == primaryNode.getId()) { //local operation		
+		if (curNode.getId() == primaryNode.getNodeId()) { //local operation		
 			res = putLocal(key, value, partitionId, NodeSection.PRIMARY);
 		} else { //delegate to another node			
-			res = getNodeMap(primaryNode, mapId).putLocal(key, value, partitionId, NodeSection.PRIMARY);
+			res = getRemoteNodeMap(primaryNode, mapId).putLocal(key, value, partitionId, NodeSection.PRIMARY);
 		}	
 
 		//secondary nodes: wait for operations to complete
 		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
 		logger.debug("Put: secondary nodes: {}", secNodes);
 		for (NodeEntry secNode : secNodes) {			
-			getNodeMap(secNode, mapId).putLocal(key, value, partitionId, NodeSection.SECONDARY);
+			getRemoteNodeMap(secNode, mapId).putLocal(key, value, partitionId, NodeSection.SECONDARY);
 		}
 		
 		return res;
@@ -77,17 +82,17 @@ public class NodeMap<K, V> implements Map<K, V> {
 		logger.debug("Remove: primary node: {}", primaryNode);
 		
 		V res;
-		if (curNode.getId() == primaryNode.getId()) { //local operation
+		if (curNode.getId() == primaryNode.getNodeId()) { //local operation
 			res = removeLocal(key, partitionId, NodeSection.PRIMARY);
 		} else { //delegate to another node	
-			res = getNodeMap(primaryNode, mapId).removeLocal(key, partitionId, NodeSection.PRIMARY);
+			res = getRemoteNodeMap(primaryNode, mapId).removeLocal(key, partitionId, NodeSection.PRIMARY);
 		}
 						
 		//secondary nodes: wait for operations to complete
 		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
 		logger.debug("Remove: secondary nodes: {}", secNodes);
 		for (NodeEntry secNode : secNodes) {			
-			getNodeMap(secNode, mapId).removeLocal(key, partitionId, NodeSection.SECONDARY);
+			getRemoteNodeMap(secNode, mapId).removeLocal(key, partitionId, NodeSection.SECONDARY);
 		}			
 		
 		return res;
@@ -113,10 +118,10 @@ public class NodeMap<K, V> implements Map<K, V> {
 		logger.debug("Get key from node: {}, section: {}, key: '{}'", node, section, key);
 		
 		V res;
-		if (node.getId() == this.curNode.getId()) { //local operation
+		if (node.getNodeId() == this.curNode.getId()) { //local operation
 			res = this.getLocal(key, partitionId, section);  
 		} else {
-			res = getNodeMap(node, mapId).getLocal(key, partitionId, section); 
+			res = getRemoteNodeMap(node, mapId).getLocal(key, partitionId, section); 
 		}
 		return res;
 	}
@@ -130,7 +135,11 @@ public class NodeMap<K, V> implements Map<K, V> {
 		
 		int size = 0;
 		for (NodeEntry node : pt.getNodeEntries()) {
-			size += getNodeMap(node, mapId).sizeLocal();
+			if (node.getNodeId() == this.curNode.getId()) {
+				size += sizeLocal();
+			} else {
+				size += getRemoteNodeMap(node, mapId).sizeLocal();
+			}
 		}
 		return size;
 	}
@@ -141,11 +150,11 @@ public class NodeMap<K, V> implements Map<K, V> {
 	}
 	
 	@SuppressWarnings("unchecked")
-	private NodeMap<K, V> getNodeMap(NodeEntry nodeEntry, String mapId) {
-		Node node = pt.getNodes().get(nodeEntry.getId());
-		return (NodeMap<K, V>) node.getMap(mapId);
+	private RemoteNodeMap<K, V> getRemoteNodeMap(NodeEntry nodeEntry, String mapId) {
+		RemoteNode remoteNode = this.curNode.getRemoteNode(nodeEntry.getNodeId());
+		return (RemoteNodeMap<K, V>) remoteNode.getMap(mapId);
 	}
-	
+		
 	private Map<K, V> getLocalPartitionMap(int partitionId, NodeSection section) {
 		Partition part = curNode.getPartition(partitionId, section);
 		@SuppressWarnings("unchecked")
@@ -153,26 +162,27 @@ public class NodeMap<K, V> implements Map<K, V> {
 		return map;
 	}
 
-	private int sizeLocal() {
+	public int sizeLocal() {
 		int size = 0;
 		for (Partition part : curNode.getPrimaryData()) {
-			Map<K, V> map = getLocalPartitionMap(part.getId(), NodeSection.PRIMARY);
+			@SuppressWarnings("unchecked")
+			Map<K, V> map = (Map<K, V>) part.getMap(this.mapId);
 			size += map.size();
 		}
 		return size;
 	}
 	
-	private V putLocal(K key, V value, int partitionId, NodeSection section) {
+	public V putLocal(K key, V value, int partitionId, NodeSection section) {
 		Map<K, V> map = getLocalPartitionMap(partitionId, section);
 		return map.put(key, value);
 	}
 	
-	private V getLocal(Object key, int partitionId, NodeSection section) {
+	public V getLocal(Object key, int partitionId, NodeSection section) {
 		Map<K, V> map = getLocalPartitionMap(partitionId, section);
 		return map.get(key);
 	}
 	
-	private V removeLocal(Object key, int partitionId, NodeSection section) {
+	public V removeLocal(Object key, int partitionId, NodeSection section) {
 		Map<K, V> map = getLocalPartitionMap(partitionId, section);
 		return map.remove(key);
 	}

@@ -1,9 +1,13 @@
 package com.map;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class PartitionTableEntry {
+public class PartitionTableEntry implements Serializable {
+
+	private static final long serialVersionUID = -6912456390999370785L;
+	
 
 	private final int partitionId;
 		

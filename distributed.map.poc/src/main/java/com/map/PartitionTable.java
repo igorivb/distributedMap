@@ -1,16 +1,17 @@
 package com.map;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+public class PartitionTable implements Serializable {
 
-public class PartitionTable {
-
-	private static final Logger logger = LoggerFactory.getLogger(PartitionTable.class);
+	//private static final Logger logger = LoggerFactory.getLogger(PartitionTable.class);
+	
+	private static final long serialVersionUID = -1799955999038909614L;
+	
 	
 	private int replicationFactor;
 	private int partitionsCount;
@@ -18,7 +19,10 @@ public class PartitionTable {
 	private Map<Integer, PartitionTableEntry> partitionEntries;
 	
 	//nodes in cluster: all nodes, including removed
-	private Map<Integer, NodeEntry> nodeEntries;		
+	private Map<Integer, NodeEntry> nodeEntries;
+	
+	//one of the nodes is coordinator
+	private NodeEntry coordinator;
 	
 	public PartitionTable(int replicationFactor, int partitionsCount) {
 		this.replicationFactor = replicationFactor;
@@ -57,7 +61,7 @@ public class PartitionTable {
 	}
 	
 	public void addNodeEntry(NodeEntry newNode) {
-		this.nodeEntries.put(newNode.getId(), newNode);
+		this.nodeEntries.put(newNode.getNodeId(), newNode);
 		newNode.setPartitionTable(this);
 	}
 	
@@ -90,7 +94,7 @@ public class PartitionTable {
 		List<PartitionTableEntry> res = new ArrayList<>();		
 		for (PartitionTableEntry entry : this.getPartitionEntries().values()) {
 			for (Integer nodeId : nodes) {
-				if (entry.getPrimaryNode().getId() == nodeId) {
+				if (entry.getPrimaryNode().getNodeId() == nodeId) {
 					res.add(entry);
 					break;
 				}	
@@ -108,7 +112,7 @@ public class PartitionTable {
 			for (NodeEntry secNode : entry.getSecondaryNodes()) {
 				boolean found = false;
 				for (Integer nodeId : nodes) {
-					if (secNode.getId() == nodeId) {
+					if (secNode.getNodeId() == nodeId) {
 						res.add(entry);
 						found = true;
 						break;
@@ -131,24 +135,32 @@ public class PartitionTable {
 	 */
 	public void deleteNodes(List<NodeEntry> deletedNodes) {		
 		for (NodeEntry deletedNode : deletedNodes) {
-			nodeEntries.remove(deletedNode.getId()); 
+			nodeEntries.remove(deletedNode.getNodeId()); 
 		}		
 	}
 	
 	public void deleteAll() {		
-		getNodes().clear(); //delete nodes
+		LocalNodes.getInstance().getNodes().clear(); //TODO: delete nodes locally. Remove later.
 		
 		for (PartitionTableEntry entry : partitionEntries.values()) {
-			entry.removePrimaryNode(entry.getPrimaryNode().getId());
+			entry.removePrimaryNode(entry.getPrimaryNode().getNodeId());
 			
 			for (NodeEntry n : entry.getSecondaryNodes()) {
-				entry.removeSecondaryNode(n.getId());
+				entry.removeSecondaryNode(n.getNodeId());
 			}
 		}		
 		
 		this.nodeEntries.clear();
 	}
-	
+			
+	public NodeEntry getCoordinator() {
+		return coordinator;
+	}
+
+	public void setCoordinator(NodeEntry coordinator) {
+		this.coordinator = coordinator;
+	}
+
 	@Override
 	public String toString() {	
 		return String.format("Nodes: %d, entries: %d", this.getNodesSize(), this.getPartitionsSize());
@@ -165,15 +177,5 @@ public class PartitionTable {
 		
 		System.out.println();		
 	}
-	
-	
-	//------------------- TODO: remove: start
-	
-	private Map<Integer, Node> nodes = new HashMap<>();
-	
-	public Map<Integer, Node> getNodes() {
-		return nodes;
-	}
-	
-	//------------------- remove: end
+			
 }

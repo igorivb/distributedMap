@@ -1,10 +1,5 @@
 package com.map;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
@@ -17,6 +12,8 @@ public class Partition implements Serializable {
 	
 	//internal data
 	private Map<String, Map<?, ?>> maps = new HashMap<>();
+	
+	//it may contain lists and other collections
 	
 	//TODO: add status ?
 	
@@ -61,23 +58,6 @@ public class Partition implements Serializable {
 			maps.put(mapId, map);
 		}
 		return map;
-	}
-
-	public Partition copy() /*throws IOException*/ {		
-		try {
-			ByteArrayOutputStream bout = new ByteArrayOutputStream();		
-			ObjectOutputStream out = new ObjectOutputStream(bout);
-			out.writeObject(this);
-			
-			ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bout.toByteArray()));
-			
-			Partition copy = (Partition) in.readObject();
-			return copy;
-		} catch (ClassNotFoundException e) {
-			throw new RuntimeException("Failed to copy partition", e);
-		} catch (IOException ie) {
-			throw new RuntimeException("Failed to copy partition", ie);
-		}  
 	}
 	
 //	public static void main(String[] args) throws Exception {
