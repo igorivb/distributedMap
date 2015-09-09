@@ -6,9 +6,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class PartitionTable implements Serializable {
 
-	//private static final Logger logger = LoggerFactory.getLogger(PartitionTable.class);
+	private static final Logger logger = LoggerFactory.getLogger(PartitionTable.class);
 	
 	private static final long serialVersionUID = -1799955999038909614L;
 	
@@ -158,6 +161,8 @@ public class PartitionTable implements Serializable {
 	}
 
 	public void setCoordinator(NodeEntry coordinator) {
+		logger.info("Setting coordinator. Old: {}, new: {}", this.coordinator, coordinator);
+		
 		this.coordinator = coordinator;
 	}
 

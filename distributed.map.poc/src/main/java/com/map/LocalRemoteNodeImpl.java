@@ -68,4 +68,24 @@ public class LocalRemoteNodeImpl implements RemoteNode {
 	public Map<?, ?> getMap(String mapId) {
 		return new LocalRemoteNodeMapImpl<>(nodeId, mapId);
 	}
+	
+	@Override
+	public String toString() {	
+		return String.valueOf(this.nodeId);
+	}
+
+	@Override
+	public void movePartitionLocally(NodeSection srcSection, int partitionId, NodeSection destSection) {
+		getNode().movePartitionLocally(srcSection, partitionId, destSection);		
+	}
+
+	@Override
+	public void addNode(NodeEntry newNode) {
+		getNode().addNode(newNode);		
+	}
+
+	@Override
+	public void connect(NodeEntry newNode) {
+		getNode().connect(newNode);	
+	}
 }

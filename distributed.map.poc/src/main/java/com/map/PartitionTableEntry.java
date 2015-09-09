@@ -89,11 +89,16 @@ public class PartitionTableEntry implements Serializable {
 		return result;
 	}
 	
+	
+	public String toStringFormatted() {		
+		return String.format(
+			"part: %s, primary: %s, secondary: %s", 
+			this.partitionId, this.primaryNode == null ? "<null>" : this.primaryNode, this.secondaryNodes);
+	}
+	
 	@Override
 	public String toString() {		
-		return String.format(
-			"%s, primary: %s, secondary: %s", 
-			this.partitionId, this.primaryNode == null ? "<null>" : this.primaryNode, this.secondaryNodes);
+		return String.valueOf(this.partitionId);
 	}
 
 }

@@ -16,7 +16,7 @@ import org.junit.Test;
 public class LocalClusterTest {
 
 	@After
-	private void tearDown() {
+	public void tearDown() {
 		terminateCluster();
 	}
 	
@@ -440,7 +440,7 @@ public class LocalClusterTest {
 		
 		System.out.println("----- Nodes Details: -----");		
 		for (NodeEntry n : pt.getNodeEntries()) {
-			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getNodeId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());
+			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getNodeId(), n.getPrimaryPartitions(), n.getSecondaryPartitions());
 		}
 		
 		System.out.println();								

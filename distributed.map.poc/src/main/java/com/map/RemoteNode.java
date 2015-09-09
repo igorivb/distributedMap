@@ -33,14 +33,20 @@ public interface RemoteNode {
 		
 	void copyPartition(NodeSection srcSection, int partitionId, int destNodeId, NodeSection destSection);
 
+	void movePartitionLocally(NodeSection srcSection, int partitionId, NodeSection destSection);
+	
 	/**
 	 * Serialize Partition and send it over the wire.
 	 */
 	void addPartition(NodeSection section, Partition partition);	
 	
 	
+	void connect(NodeEntry nodeEntry);	
+	
+	void addNode(NodeEntry newNode);
+	
 	/**
 	 * Get remote map which makes remote calls to nodes.
 	 */
-	Map<?, ?> getMap(String mapId);		
+	Map<?, ?> getMap(String mapId);	
 }

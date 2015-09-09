@@ -34,7 +34,11 @@ public class Node /*implements RemoteNode*/ {
 	
 	private Map<String, NodeMap<?, ?>> maps = new HashMap<>();
 	
-	private Map<Integer, RemoteNode> nodes = new HashMap<>(); //list of remote nodes
+	/*
+	 * List of remote nodes.
+	 * Note that it doesn't contain current node.
+	 */
+	private Map<Integer, RemoteNode> remoteNodes = new HashMap<>(); //list of remote nodes
 	
 	/*
 	 * Node comparators. Default sorting: desc
@@ -84,23 +88,14 @@ public class Node /*implements RemoteNode*/ {
 	//RemoteNode
 	//@Override
 	public void setPartitionTable(PartitionTable pt) {
+		debug("setPartitionTable");
 		this.pt = pt;
 	}
 	
 	//RemoteNode
 	//@Override
 	public void removePartition(NodeSection section, int partitionId) {
-		Partition part = null;
-		for (Partition p : getData(section)) { //find partition
-			if (p.getId() == partitionId) {
-				part = p;
-				break;
-			}
-		}
-		if (part == null) {
-			throw new RuntimeException(
-				String.format("Failed to find partition in node. Node: %s, partition: %s", this.id, partitionId));
-		}
+		Partition part = findPartition(section, partitionId);
 		
 		if (section == NodeSection.PRIMARY) {
 			this.primaryData.remove(part);
@@ -112,8 +107,24 @@ public class Node /*implements RemoteNode*/ {
 	//RemoteNode
 	//@Override
 	public void copyPartition(NodeSection srcSection, int partitionId, int destNodeId, NodeSection destSection) {
+		Partition part = findPartition(srcSection, partitionId);
+		
+		RemoteNode remote = getRemoteNode(destNodeId);		
+		remote.addPartition(destSection, part);
+	}
+	
+	//RemoteNode
+	//@Override
+	public void movePartitionLocally(NodeSection srcSection, int partitionId, NodeSection destSection) {
+		Partition part = findPartition(srcSection, partitionId);
+		getData(srcSection).remove(part);
+		getData(destSection).add(part);		
+	}	
+	
+	//throw Exception if it can't find partition
+	private Partition findPartition(NodeSection section, int partitionId) {
 		Partition part = null;
-		for (Partition p : getData(srcSection)) { //find partition
+		for (Partition p : getData(section)) { //find partition
 			if (p.getId() == partitionId) {
 				part = p;
 				break;
@@ -121,11 +132,10 @@ public class Node /*implements RemoteNode*/ {
 		}
 		if (part == null) {
 			throw new RuntimeException(
-				String.format("Failed to find partition in node. Node: %s, partition: %s", this.id, partitionId));
+				String.format("Failed to find partition in node. Node: %s, section: %s, partition: %s", this.id, section, partitionId));
 		}
-		
-		this.nodes.get(destNodeId).addPartition(destSection, part);
-	}
+		return part;
+	} 
 	
 	//RemoteNode
 	//@Override
@@ -136,7 +146,7 @@ public class Node /*implements RemoteNode*/ {
 	//RemoteNode
 	//@Override
 	public Partition createPartition(NodeSection section, int partitionId) {
-		logger.info("Creating partition in node, node: {}, partition: {}, type: {}", partitionId, section);
+		info("Creating partition in node, node: {}, partition: {}, type: {}", this.id, partitionId, section);
 		
 		Partition part = new Partition(partitionId);
 		getData(section).add(part);
@@ -163,6 +173,36 @@ public class Node /*implements RemoteNode*/ {
 			maps.put(mapId, map);
 		}
 		return map;
+	}
+	
+	
+	public void connect(NodeEntry newNode) {
+		info("Connect to node: {}", newNode);
+		
+		//make connection between this node and remote one
+		this.remoteNodes.put(newNode.getNodeId(), Node.createRemoteNode(newNode));
+	}
+	
+	/**
+	 * //RemoteNode
+	 * //@Override
+	 * 
+	 * Add new node to cluster. Called by newNode during cluster discovery phase.
+	 * 
+	 * TODO: 
+	 * 1. allows to add 1 node at a time. 
+	 * If needed improve later to allow process several nodes at a time.
+	 * 
+	 * 2. make changes, if 'remove' occurred during 'add' operation
+	 * e.g. some partitions may be available only in secondary or lost at all. 
+	 * Is seems it should be handled by 'remove' and 'add' operation should be stopped.		
+	 */
+	public void addNode(NodeEntry newNode) {
+		info("Adding node: {}", newNode);						
+		
+		if (this.isCoordinator()) {
+			doAddNode(newNode);
+		}
 	}
 	
 	@Override
@@ -231,9 +271,7 @@ public class Node /*implements RemoteNode*/ {
 	 * Starting point of node: read configuration, setup.
 	 */
 	public void init() {
-		logger.info("New node is started: " + this.id);
-		
-		LocalNodes.getInstance().getNodes().put(this.id, this); //add current node to nodes list
+		info("Starting new node");				
 		
 		this.discoveryNodes();
 	}
@@ -246,7 +284,7 @@ public class Node /*implements RemoteNode*/ {
 	 * TODO: Till we implement network communication between nodes, get nodes list from some in-memory storage.
 	 */
 	private void discoveryNodes() {
-		logger.info("Discovery cluster");				
+		info("Discovering cluster");				
 		
 		this.localNodesDiscovery();				
 	}
@@ -254,13 +292,23 @@ public class Node /*implements RemoteNode*/ {
 	private void localNodesDiscovery() {				
 		NodeEntry nodeEntry = new NodeEntry(id, address);
 
-		Map<Integer, Node> nodes = LocalNodes.getInstance().getNodes();
-		if (!nodes.isEmpty()) {
-			for (Node node : nodes.values()) {
-				node.addNode(nodeEntry); //in real implementation it should be remote call
-				
+		Map<Integer, Node> nodes = new HashMap<>(LocalNodes.getInstance().getNodes()); //copy list so we are not affected by any changes
+		boolean isClusterEmpty = nodes.isEmpty();
+		
+		LocalNodes.getInstance().getNodes().put(this.id, this); //add current node to nodes list
+		
+		if (!isClusterEmpty) {
+			info("Found existing cluster");
+			
+			for (Node node : nodes.values()) { //make connection between newNode and existing nodes
 				RemoteNode remoteNode = Node.createRemoteNode(node.getId(), node.getAddress());
-				this.nodes.put(remoteNode.getId(), remoteNode);			
+				this.remoteNodes.put(remoteNode.getId(), remoteNode);
+				
+				remoteNode.connect(nodeEntry);
+			}
+			
+			for (RemoteNode remoteNode : this.remoteNodes.values()) {								
+				remoteNode.addNode(nodeEntry);									
 			}	
 		} else { //there are no nodes: cluster is empty
 			initCluster(nodeEntry);
@@ -279,28 +327,6 @@ public class Node /*implements RemoteNode*/ {
 		return this.id == this.pt.getCoordinator().getNodeId();
 	}
 	
-	/**
-	 * Add new node to cluster. Called by newNode during cluster discovery phase.
-	 * 
-	 * TODO: 
-	 * 1. allows to add 1 node at a time. 
-	 * If needed improve later to allow process several nodes at a time.
-	 * 
-	 * 2. make changes, if 'remove' occurred during 'add' operation
-	 * e.g. some partitions may be available only in secondary or lost at all. 
-	 * Is seems it should be handled by 'remove' and 'add' operation should be stopped.		
-	 */
-	public void addNode(NodeEntry newNode) {
-		logger.info("{}. Adding node: {}", this.id, newNode);
-		
-		//make connection between this node and remote one
-		this.nodes.put(newNode.getNodeId(), Node.createRemoteNode(newNode));
-		
-		if (this.isCoordinator()) {
-			doAddNode(newNode);
-		}
-	}
-	
 	//called on coordinator
 	private void doAddNode(NodeEntry newNode) {	
 		boolean isClusterFull = pt.getNodesSize() == pt.getPartitionsSize();		
@@ -309,7 +335,7 @@ public class Node /*implements RemoteNode*/ {
 		if (isClusterFull) { //TODO: remove condition when we can expand cluster if it is full
 			clusterFull(newNode);
 		} else {
-			logger.info("Is balanced: {}", isBalanced);
+			debug("Is balanced: {}", isBalanced);
 			
 			//work with partition tables
 			pt.addNodeEntry(newNode); //update own PartitionTable
@@ -329,7 +355,7 @@ public class Node /*implements RemoteNode*/ {
 				processAddSecondary(newNode, isBalanced, primaryPartitions);
 			}
 												
-			logger.info("Added new node to nodes list: {}", newNode.getNodeId());
+			info("Added new node to nodes list: {}", newNode.getNodeId());
 						
 			checkClusterPartitions(true);	
 		}												
@@ -348,7 +374,7 @@ public class Node /*implements RemoteNode*/ {
 	 *   where only part of partitions were re-distributed. 
 	 */
 	public void removeNodes(List<NodeEntry> deletedNodes) {
-		logger.info("Removing nodes: {}", deletedNodes);
+		info("Removing nodes: {}", deletedNodes);
 		
 		//check if we have nodes to delete
 		for (NodeEntry deletedNode : deletedNodes) {
@@ -383,7 +409,7 @@ public class Node /*implements RemoteNode*/ {
 						
 			checkClusterPartitions(true);
 		} else {
-			logger.info("Deleting all nodes");			
+			info("Deleting all nodes");			
 			
 			pt.deleteAll();
 			this.updatePartitionTable();
@@ -400,7 +426,7 @@ public class Node /*implements RemoteNode*/ {
 		
 		int currentRF = Math.min(pt.getReplicationFactor(), targetNodes.size() - 1);
 		
-		logger.debug("Processing remove secondary, current replication factor: {}", currentRF);
+		debug("Processing remove secondary, current replication factor: {}", currentRF);
 		
 		//delete extra nodes if needed
 		if (currentRF < pt.getReplicationFactor()) {						
@@ -409,16 +435,16 @@ public class Node /*implements RemoteNode*/ {
 				
 				int diff = excludeDeletedNodes(entry.getSecondaryNodes()).size() - currentRF;
 				if (diff > 0) {
-					logger.debug("Deleting extra nodes for partition: {}, num: {}", partId, diff);
+					debug("Deleting extra nodes for partition: {}, num: {}", partId, diff);
 					
 					//delete from max secondary.len
 					Collections.sort(targetNodes, secondaryNodesDescCmp);
 					
 					for (int i = 0; i < diff; i ++) {						
 						NodeEntry targetNode = targetNodes.get(i);
-						logger.debug("Delete secondary partition from node, node: {}, partition: {}", targetNode, partId);
+						debug("Delete secondary partition from node, node: {}, partition: {}", targetNode, partId);
 												
-						nodes.get(targetNode.getNodeId()).removePartition(NodeSection.SECONDARY, partId);	
+						getRemoteNode(targetNode.getNodeId()).removePartition(NodeSection.SECONDARY, partId);	
 						
 						pt.getEntryForPartition(partId).removeSecondaryNode(this.getId());
 					}
@@ -429,15 +455,15 @@ public class Node /*implements RemoteNode*/ {
 		//restore secondary if needed
 		for (NodeEntry deletedNode : deletedNodes) { //iterate nodes			
 			List<PartitionTableEntry> deletedSecParts = deletedNode.getSecondaryPartitions();
-			logger.debug("Restoring secondary partitions deleted on node: {}, partitions: {}", deletedNode.getNodeId(), deletedSecParts);
+			debug("Restoring secondary partitions deleted on node: {}, partitions: {}", deletedNode.getNodeId(), deletedSecParts);
 			
 			for (PartitionTableEntry deletedSecPart : deletedSecParts) { //iterate partitions								
 				int diff = currentRF - excludeDeletedNodes(deletedSecPart.getSecondaryNodes()).size();				
 				
-				logger.debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
+				debug("Handle deleted secondary partition: {}, diff: {}", deletedSecPart, diff);
 				
 				if (diff == 0) { //need to restore ?
-					logger.debug("No need to restore secondary partition: {}", deletedSecPart);
+					debug("No need to restore secondary partition: {}", deletedSecPart);
 				} else {
 					NodeEntry primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart.getPartitionId());
 					if (primaryNode != null) { //restore						
@@ -505,17 +531,17 @@ public class Node /*implements RemoteNode*/ {
 		
 		List<PartitionTableEntry> deletedPrimaryParts = this.getDeletedPrimaryPartitions(deletedNodes);
 		
-		logger.info("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
+		info("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
 		
 		for (PartitionTableEntry deletedPrimaryPart : deletedPrimaryParts) {			
-			logger.debug("Handle deleted primary partition: {}", deletedPrimaryPart);
+			debug("Handle deleted primary partition: {}", deletedPrimaryPart);
 			
 			Collections.sort(targetNodes, primaryNodesAscCmp);
 			
 			//find nodes which contain deleted partition
 			List<NodeEntry> secNodes = excludeDeletedNodes(deletedPrimaryPart.getSecondaryNodes());
 			
-			logger.debug("Secondary nodes which contain deleted partition: {}, nodes: {}", deletedPrimaryPart, secNodes);
+			debug("Secondary nodes which contain deleted partition: {}, nodes: {}", deletedPrimaryPart, secNodes);
 			if (!secNodes.isEmpty()) {
 				NodeEntry replicaNode = secNodes.get(0); //take first one
 				
@@ -528,9 +554,9 @@ public class Node /*implements RemoteNode*/ {
 				
 				NodeEntry targetNode = targetNodes.get(0);
 				
-				logger.warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);						
+				warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);						
 				
-				nodes.get(targetNode.getNodeId()).createPartition(NodeSection.PRIMARY, deletedPrimaryPart.getPartitionId());
+				getRemoteNode(targetNode.getNodeId()).createPartition(NodeSection.PRIMARY, deletedPrimaryPart.getPartitionId());
 			}
 		}
 		
@@ -562,7 +588,7 @@ public class Node /*implements RemoteNode*/ {
 	private void processAddSecondary(NodeEntry newNode, boolean isBalanced, List<PartitionTableEntry> primaryPartitions) {				
 		if (isBalanced) {									
 			int num = (pt.getPartitionsSize() * pt.getReplicationFactor()) / pt.getNodesSize(); //ignore remaining part of division
-			logger.debug("Processing add secondary: balanced, num: {}", num);
+			debug("Processing add secondary: balanced, num: {}", num);
 			
 			Set<PartitionTableEntry> addedParts = new HashSet<>(primaryPartitions); 
 			
@@ -571,7 +597,7 @@ public class Node /*implements RemoteNode*/ {
 									
 			for (int i = 0; i < num;) {	
 				if (sortedNodes.isEmpty()) {
-					logger.debug("Didn't all needed nodes to secondary, left: {}", num);
+					debug("Didn't all needed nodes to secondary, left: {}", num);
 					break;
 				}
 				Collections.sort(sortedNodes, secondaryNodesDescCmp);
@@ -586,7 +612,7 @@ public class Node /*implements RemoteNode*/ {
 						addedParts.add(part);
 						break;
 					} else {
-						logger.debug("Don't add secondary partition: '{}' in node {}, because it already exists", p, node);
+						debug("Don't add secondary partition: '{}' in node {}, because it already exists", p, node);
 					}
 				}
 				if (part == null) { //don't process this node any more
@@ -599,7 +625,7 @@ public class Node /*implements RemoteNode*/ {
 				i ++;
 			}		
 		} else {
-			logger.debug("Processing secondary: not balanced");
+			debug("Processing secondary: not balanced");
 			
 			//copy all primary to new node's secondary
 			for (NodeEntry node : getNodes(Arrays.asList(newNode))) {
@@ -612,7 +638,7 @@ public class Node /*implements RemoteNode*/ {
 	
 	private List<PartitionTableEntry> processAddPrimary(NodeEntry newNode, boolean isBalanced) {								
 		int num = pt.getPartitionsSize() / pt.getNodesSize(); //ignore remaining part of division
-		logger.debug("Processing add primary, num: {}", num);
+		debug("Processing add primary, num: {}", num);
 		
 		List<PartitionTableEntry> primaryPartitions = new ArrayList<>();
 		
@@ -673,21 +699,40 @@ public class Node /*implements RemoteNode*/ {
 		NodeEntry srcEntry, PartitionTableEntry srcPartEntry, NodeSection srcSection, 
 		NodeEntry destEntry, NodeSection destSection) /*throws IOException*/ {
 		
-		logger.debug((!isMove ? "Copying" : "Moving ") + 
+		info((!isMove ? "Copying" : "Moving ") + 
 			" partition '{}' from '{}'.{} to '{}'.{}", 
-			srcPartEntry, srcEntry.getNodeId(), srcSection, destEntry.getNodeId(), destSection);
+			srcPartEntry.getPartitionId(), srcEntry.getNodeId(), srcSection, destEntry.getNodeId(), destSection);
 		
-		RemoteNode src = nodes.get(srcEntry.getNodeId());
+		//it is null for current node: call methods directly on this node
+		//TODO: maybe it is better to use unique 'INode' interface ?
+		RemoteNode src = remoteNodes.get(srcEntry.getNodeId());
 				
-		//make actual copy
-		src.copyPartition(srcSection, srcPartEntry.getPartitionId(), destEntry.getNodeId(), destSection);
+		if (isMove && srcEntry.getNodeId() == destEntry.getNodeId()) { //local move
+			debug("Move partition locally");
+			if (src != null) {
+				src.movePartitionLocally(srcSection, srcPartEntry.getPartitionId(), destSection);
+			} else {
+				this.movePartitionLocally(srcSection, srcPartEntry.getPartitionId(), destSection);
+			}
+		} else {
+			//make actual copy
+			if (src != null) {
+				src.copyPartition(srcSection, srcPartEntry.getPartitionId(), destEntry.getNodeId(), destSection);	
+			} else {
+				this.copyPartition(srcSection, srcPartEntry.getPartitionId(), destEntry.getNodeId(), destSection);
+			}
+							
+			if (isMove) { //delete from src			
+				//logger.debug("Deleting partition '{}' from {} node, isPrimary: {}", srcPart.getId(), src.getId(), isSrcPrimary);
+				if (src != null) {
+					src.removePartition(srcSection, srcPartEntry.getPartitionId());	
+				} else {
+					this.removePartition(srcSection, srcPartEntry.getPartitionId());
+				}			
+			}			
+		}
 		
-		
-		if (isMove) { //delete from src			
-			//logger.debug("Deleting partition '{}' from {} node, isPrimary: {}", srcPart.getId(), src.getId(), isSrcPrimary);
-			src.removePartition(srcSection, srcPartEntry.getPartitionId());
-		}	
-		
+				
 		//update partition table
 		if (isMove) {			
 			if (srcSection == NodeSection.PRIMARY) {		
@@ -730,10 +775,12 @@ public class Node /*implements RemoteNode*/ {
 		int replicationFactor = config.getInt("replicationFactor");
 		int partitionsCount = config.getInt("partitionsCount");
 		
-		logger.info("Creating cluster, replicationFactor: {}, partitionsCount: {}", replicationFactor, partitionsCount);								
+		info("Creating cluster, replicationFactor: {}, partitionsCount: {}", replicationFactor, partitionsCount);								
 				
 		pt = new PartitionTable(replicationFactor, partitionsCount); //create partition table
 		pt.setCoordinator(newNode);	 //make first node as coordinator
+		
+		pt.addNodeEntry(newNode); //update own PartitionTable
 		
 		for (int i = 0; i < pt.getPartitionsSize(); i ++) { //create primary partitions in this node
 			this.createPartition(NodeSection.PRIMARY, i);		
@@ -798,8 +845,8 @@ public class Node /*implements RemoteNode*/ {
 	 * Update PartitionTable in all changes: this is current strategy to propagate changes in PartitionTable. 
 	 */
 	private void updatePartitionTable() {
-		logger.info("Updating partition table");
-		for (RemoteNode node : nodes.values()) {
+		debug("Updating partition table");
+		for (RemoteNode node : remoteNodes.values()) {
 			node.setPartitionTable(pt);
 		}
 	}
@@ -809,7 +856,27 @@ public class Node /*implements RemoteNode*/ {
 	}
 	
 	public RemoteNode getRemoteNode(int nodeId) {
-		return this.nodes.get(nodeId);
+		RemoteNode node = this.remoteNodes.get(nodeId);
+		if (node == null) {
+			throw new RuntimeException(
+				String.format("Failed to get remote node. Node: %s, remote node: %s", this.id, nodeId));
+		}
+		return node;
+	}
+	
+	private String logPrefix() {
+		return "Node: " + this.id + ". ";
+	}
+	private void info(String msg, Object... arguments) {
+		logger.info(logPrefix() + msg, arguments);
+	}
+	
+	private void debug(String msg, Object... arguments) {
+		logger.debug(logPrefix() + msg, arguments);
+	}
+	
+	private void warn(String msg, Object... arguments) {
+		logger.warn(logPrefix() + msg, arguments);
 	}
 	
 	public static RemoteNode createRemoteNode(NodeEntry nodeEntry) {
