@@ -42,8 +42,9 @@ public class NodeMap<K, V> implements Map<K, V> {
 	public V put(K key, V value) {						
 		//find partition where key should be located
 		int partitionId = pt.getPartitionForKey(key);
-		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId);
-		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);		
+		
+		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId, false);
+		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId, false);		
 		info("Put Request: key: '{}', partition: {}, primary node: {}, secondary nodes: {}", key, partitionId, primaryNode, secNodes);
 								
 		V res;
@@ -72,7 +73,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 		
 		info("Remove Request: key: '{}', partition: {}", key, partitionId);
 								
-		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId);
+		NodeEntry primaryNode = pt.getPrimaryNodeForPartition(partitionId, false);
 		debug("Remove: primary node: {}", primaryNode);
 		
 		V res;
@@ -83,7 +84,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 		}
 						
 		//secondary nodes: wait for operations to complete
-		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
+		List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId, false);
 		debug("Remove: secondary nodes: {}", secNodes);
 		for (NodeEntry secNode : secNodes) {			
 			getRemoteNodeMap(secNode, mapId).removeLocal(key, partitionId, NodeSection.SECONDARY);
@@ -101,10 +102,10 @@ public class NodeMap<K, V> implements Map<K, V> {
 		
 		info("Get Request: key: '{}', partition: {}", key, partitionId);
 								
-		NodeEntry node = pt.getPrimaryNodeForPartition(partitionId); 
+		NodeEntry node = pt.getPrimaryNodeForPartition(partitionId, false); 
 		NodeSection section = NodeSection.PRIMARY;
 		if (node == null) {
-			List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId);
+			List<NodeEntry> secNodes = pt.getSecondaryNodesForPartition(partitionId, false);
 			node = secNodes.get(0); //take first
 			section = NodeSection.SECONDARY;
 		}	
@@ -128,7 +129,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 		info("Size Request");
 		
 		int size = 0;
-		for (NodeEntry node : pt.getNodeEntries()) {
+		for (NodeEntry node : pt.getNodeEntries(false)) {
 			if (node.getNodeId() == this.curNode.getId()) {
 				size += sizeLocal();
 			} else {

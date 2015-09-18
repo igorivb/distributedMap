@@ -4,9 +4,18 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Contains information for partition: primary node, secondary nodes.
+ * It returns nodes information even if nodes are marked as deleted.
+ */
 public class PartitionTableEntry implements Serializable {
 
 	private static final long serialVersionUID = -6912456390999370785L;
+	
+	private static final Logger logger = LoggerFactory.getLogger(PartitionTableEntry.class);		
 	
 
 	private final int partitionId;
@@ -30,11 +39,16 @@ public class PartitionTableEntry implements Serializable {
 		this.primaryNode = node;		
 	}
 	
+	/**
+	 * Return node even if it is marked as deleted.
+	 */
 	public NodeEntry getPrimaryNode() {
-		return primaryNode != null ? pt.getNodeEntry(primaryNode) : null;
+		return primaryNode != null ? pt.getNodeEntry(primaryNode, true) : null;
 	}
 	
-	public void addSecondaryNode(Integer node) {		
+	public void addSecondaryNode(Integer node) {	
+		logger.debug("Add secondary node. Partition id: {}, node: {}", partitionId, node);
+		
 		if (secondaryNodes.contains(node)) { //check there are no dups
 			throw new RuntimeException(
 				String.format("Failed to add secondary node for partition because it already exists. Partition: %s, node: %s", 
@@ -43,10 +57,19 @@ public class PartitionTableEntry implements Serializable {
 		secondaryNodes.add(node);		
 	}
 	
+	/**
+	 * Return all nodes including deleted.
+	 */
 	public List<NodeEntry> getSecondaryNodes() {
 		List<NodeEntry> res = new ArrayList<>();
 		for (Integer secNode : secondaryNodes) {
-			res.add(pt.getNodeEntry(secNode));
+			NodeEntry nodeEntry = pt.getNodeEntry(secNode, true);
+			if (nodeEntry == null) {
+				throw new RuntimeException(String.format(
+					"Failed to get secondary node. Partition: %s, secNode: %s", this.partitionId, secNode
+				));
+			}
+			res.add(nodeEntry);
 		}
 		return res;
 	}
@@ -57,11 +80,15 @@ public class PartitionTableEntry implements Serializable {
 		 * E.g. they may not be the same if partition was previously copied to another node.
 		 */
 		if (this.primaryNode == node) {
+			logger.debug("Remove primary node. Partition id: {}, node: {}", partitionId, node);
+			
 			this.primaryNode = null;			
 		}		
 	}
 	
 	public void removeSecondaryNode(Integer node) {
+		logger.debug("Remove secondary node. Partition id: {}, node: {}", partitionId, node);
+		
 		if (!secondaryNodes.remove(node)) { //check if it existed
 			throw new RuntimeException(
 				String.format("Failed to remove secondary node from partition because it doesn't exist. Partition: %s, node: %s", 

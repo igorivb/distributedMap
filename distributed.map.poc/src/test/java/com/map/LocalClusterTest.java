@@ -66,18 +66,19 @@ public class LocalClusterTest {
 //	}
 	
 	/*
-	 * Test first version of adding node.
+	 * Test creating clusters with different replicationFactors: [0, 6].
 	 * Should work without exceptions. 
 	 */
 	@Test
 	public void testAddNodes() {
 		int partitionsCount = 13;
 				
-		for (int replicationFactor = 0; replicationFactor < 7; replicationFactor ++) {
-			//Cluster cluster = new Cluster(replicationFactor, partitionsCount);			
+		for (int replicationFactor = 0; replicationFactor < 7; replicationFactor ++) {			
 			Configuration config = this.createTestConfig(partitionsCount, replicationFactor);			
 			
-			for (int i = 0; i < partitionsCount + 1; i ++) {
+			System.out.println("------------------------------------------------------- Creating cluster: partitionsCount: " + partitionsCount + ", replicationFactor: " + replicationFactor);
+			
+			for (int i = 0; i < partitionsCount; i ++) {
 				//cluster.addNode(new NodeEntry(i, null));
 				
 				InetAddress address = null;
@@ -100,9 +101,10 @@ public class LocalClusterTest {
 			System.out.println();
 		}
 	}
-	
+		
+	//FIXME: start here
 	/*
-	 * Remove 2 nodes: replication factor is the same.
+	 * Remove 2 nodes: replication factor is not changed during removal.
 	 * No data loss.
 	 */
 	@Test
@@ -110,8 +112,6 @@ public class LocalClusterTest {
 		int partitionsCount = 7;
 		int replicationFactor = 1;
 		int nodesCount = partitionsCount;
-		
-		//List<Node> nodes = new ArrayList<>();
 						
 		//create cluster
 		Configuration config = this.createTestConfig(partitionsCount, replicationFactor);
@@ -119,8 +119,6 @@ public class LocalClusterTest {
 			InetAddress address = null;
 			Node node = new Node(i, address, config);
 			node.init();		
-			
-			//nodes.add(node);
 		}
 		
 		printPartitions();
@@ -131,7 +129,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();		
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0), pt.getNodeEntry(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(1, false), pt.getNodeEntry(5, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -139,7 +137,7 @@ public class LocalClusterTest {
 				
 		checkPartitionTableAfterRemoval(deletedNodes);					
 	}
-
+		
 	/*
 	 * Remove 4 nodes: data loss, interesting data re-distribution.
 	 */
@@ -166,7 +164,11 @@ public class LocalClusterTest {
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();		
 		//cluster.removeNodes(deletedNodes);
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0), pt.getNodeEntry(2), pt.getNodeEntry(3), pt.getNodeEntry(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(
+			pt.getNodeEntry(1, false), 
+			pt.getNodeEntry(2, false), 
+			pt.getNodeEntry(3, false), 
+			pt.getNodeEntry(5, false));
 		deleteNodes(deletedNodes);
 						
 		printPartitions();
@@ -197,9 +199,14 @@ public class LocalClusterTest {
 		System.out.println("Remove nodes");
 		System.out.println("-------------------------------------------------------");
 		
-		//delete 2 nodes
+		//delete nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0), pt.getNodeEntry(2), pt.getNodeEntry(3), pt.getNodeEntry(4), pt.getNodeEntry(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(
+			pt.getNodeEntry(1, false), 
+			pt.getNodeEntry(2, false), 
+			pt.getNodeEntry(3, false), 
+			pt.getNodeEntry(4, false), 
+			pt.getNodeEntry(5, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -234,7 +241,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0), pt.getNodeEntry(2));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(1, false), pt.getNodeEntry(2, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -269,7 +276,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0), pt.getNodeEntry(5));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0, false), pt.getNodeEntry(5, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -303,7 +310,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(1, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -337,7 +344,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -375,7 +382,7 @@ public class LocalClusterTest {
 				System.out.println("-------------------------------------------------------");
 				
 				PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-				List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(i));
+				List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(i, false));
 				//cluster.removeNodes(deletedNodes);
 				deleteNodes(deletedNodes);
 				
@@ -396,7 +403,7 @@ public class LocalClusterTest {
 		
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
 		
-		for (NodeEntry node : pt.getNodeEntries()) {
+		for (NodeEntry node : pt.getNodeEntries(true)) {
 			if (deletedNodes.contains(node)) {
 				fail("Nodes contain deleted node: " + node);
 			}
@@ -433,13 +440,13 @@ public class LocalClusterTest {
 		System.out.println("----- Nodes sizes: -----");
 		System.out.printf("  id | primary | secondary%n");		
 			
-		for (NodeEntry n : pt.getNodeEntries()) {
+		for (NodeEntry n : pt.getNodeEntries(true)) {
 			System.out.printf("%4d | %7d | %9d%n", n.getNodeId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());												
 		}		
 		System.out.println();
 		
 		System.out.println("----- Nodes Details: -----");		
-		for (NodeEntry n : pt.getNodeEntries()) {
+		for (NodeEntry n : pt.getNodeEntries(true)) {
 			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getNodeId(), n.getPrimaryPartitions(), n.getSecondaryPartitions());
 		}
 		
@@ -454,7 +461,7 @@ public class LocalClusterTest {
 		int minPrimary = Integer.MAX_VALUE, maxPrimary = Integer.MIN_VALUE;
 		int minSecond = Integer.MAX_VALUE, maxSecond = Integer.MIN_VALUE;
 				
-		for (NodeEntry n : pt.getNodeEntries()) {
+		for (NodeEntry n : pt.getNodeEntries(true)) {
 			minPrimary = Math.min(minPrimary, n.getPrimaryPartitionsCount());
 			maxPrimary = Math.max(maxPrimary, n.getPrimaryPartitionsCount());
 			

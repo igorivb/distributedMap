@@ -88,7 +88,7 @@ public class Node /*implements RemoteNode*/ {
 	//RemoteNode
 	//@Override
 	public void setPartitionTable(PartitionTable pt) {
-		debug("setPartitionTable");
+		trace("setPartitionTable");
 		this.pt = pt;
 	}
 	
@@ -149,13 +149,7 @@ public class Node /*implements RemoteNode*/ {
 		info("Creating partition in node, node: {}, partition: {}, type: {}", this.id, partitionId, section);
 		
 		Partition part = new Partition(partitionId);
-		getData(section).add(part);
-		
-		if (section == NodeSection.PRIMARY) {
-			pt.getEntryForPartition(partitionId).setPrimaryNode(this.getId());
-		} else {
-			pt.getEntryForPartition(partitionId).addSecondaryNode(this.getId());	
-		}
+		getData(section).add(part);		
 		
 		return part;
 	}
@@ -329,8 +323,8 @@ public class Node /*implements RemoteNode*/ {
 	
 	//called on coordinator
 	private void doAddNode(NodeEntry newNode) {	
-		boolean isClusterFull = pt.getNodesSize() == pt.getPartitionsSize();		
-		boolean isBalanced = pt.getNodesSize() >= pt.getReplicationFactor() + 1; 
+		boolean isClusterFull = pt.getNodesSize(false) == pt.getPartitionsSize();		
+		boolean isBalanced = pt.getNodesSize(false) >= pt.getReplicationFactor() + 1; 
 				
 		if (isClusterFull) { //TODO: remove condition when we can expand cluster if it is full
 			clusterFull(newNode);
@@ -373,22 +367,38 @@ public class Node /*implements RemoteNode*/ {
 	 *   e.g. partitions may be not balanced if 'remove' occurred in the middle of 'add' 
 	 *   where only part of partitions were re-distributed. 
 	 */
-	public void removeNodes(List<NodeEntry> deletedNodes) {
+	public void removeNodes(List<NodeEntry> deleted) {
+		//find entries in our PartitionTable and work with them
+		List<NodeEntry> deletedNodes = new ArrayList<>();
+		for (NodeEntry node : deleted) {
+			deletedNodes.add(pt.getNodeEntry(node.getNodeId(), true)); //include node even if it was already marked as deleted
+		}
+		
 		info("Removing nodes: {}", deletedNodes);
+		
+		/*
+		 * TODO: delete nodes locally. Remove later.
+		 * Nodes should not exist when this method is called.
+		 * 
+		 * Delete corresponding NodeEntry's in the end of processing.
+		 */
+		for (NodeEntry deletedNode : deletedNodes) { 
+			LocalNodes.getInstance().getNodes().remove(deletedNode.getNodeId());
+		}
 		
 		//check if we have nodes to delete
 		for (NodeEntry deletedNode : deletedNodes) {
-			NodeEntry n = pt.getNodeEntry(deletedNode.getNodeId());
+			NodeEntry n = pt.getNodeEntry(deletedNode.getNodeId(), true);
 			if (n == null) {
 				throw new RuntimeException(String.format("Failed to delete nodes, node: %s doesn't exist", deletedNode));
 			}
 		}
 				
-		boolean deleteAllNodes = deletedNodes.size() == pt.getNodesSize();
+		boolean deleteAllNodes = deletedNodes.size() == pt.getNodesSize(true);
 		
 		if (!deleteAllNodes) {
 			for (NodeEntry node : deletedNodes) { //mark nodes as deleted
-				pt.markNodeAsDeleted(node);
+				pt.markNodeAsDeleted(node.getNodeId());
 			}	
 			updatePartitionTable();
 					
@@ -398,13 +408,14 @@ public class Node /*implements RemoteNode*/ {
 				processRemoveSecondary(deletedNodes);
 			}
 			
-			balanceRemoveNodes(deletedNodes);
-					
-			for (NodeEntry deleted : deletedNodes) { //TODO: delete nodes locally. Remove later.
-				LocalNodes.getInstance().getNodes().remove(deleted);
-			}
+			balanceRemoveNodes(deletedNodes);								
 			
-			pt.deleteNodes(deletedNodes);
+			//final nodes deletion
+			for (NodeEntry deletedNode : deletedNodes) {
+				this.remoteNodes.remove(deletedNode.getNodeId());
+			}
+			pt.deleteNodes(deletedNodes);			
+			
 			this.updatePartitionTable();
 						
 			checkClusterPartitions(true);
@@ -412,6 +423,8 @@ public class Node /*implements RemoteNode*/ {
 			info("Deleting all nodes");			
 			
 			pt.deleteAll();
+			this.remoteNodes.clear();
+			
 			this.updatePartitionTable();
 		}						
 	}
@@ -464,9 +477,9 @@ public class Node /*implements RemoteNode*/ {
 				
 				if (diff == 0) { //need to restore ?
 					debug("No need to restore secondary partition: {}", deletedSecPart);
-				} else {
-					NodeEntry primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart.getPartitionId());
-					if (primaryNode != null) { //restore						
+				} else {					
+					NodeEntry primaryNode = pt.getPrimaryNodeForPartition(deletedSecPart.getPartitionId(), false);
+					if (primaryNode != null) { //restore												
 						//find target node
 						Collections.sort(targetNodes, secondaryNodesAscCmp);							
 						NodeEntry targetNode = findTargetNode(targetNodes, deletedSecPart, NodeSection.SECONDARY);							
@@ -525,13 +538,13 @@ public class Node /*implements RemoteNode*/ {
 	 * Restore deleted primary partitions from secondary nodes, if there are any, 
 	 * otherwise create empty partitions. 
 	 */
-	private void processRemovePrimary(List<NodeEntry> deletedNodes) {						
+	private void processRemovePrimary(List<NodeEntry> deletedNodes) {								
 		//sort nodes by primaryData.len asc		
 		List<NodeEntry> targetNodes = getNodes(deletedNodes);
 		
 		List<PartitionTableEntry> deletedPrimaryParts = this.getDeletedPrimaryPartitions(deletedNodes);
 		
-		info("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
+		debug("Processing remove primary, deleted partitions: {}", deletedPrimaryParts);
 		
 		for (PartitionTableEntry deletedPrimaryPart : deletedPrimaryParts) {			
 			debug("Handle deleted primary partition: {}", deletedPrimaryPart);
@@ -557,6 +570,8 @@ public class Node /*implements RemoteNode*/ {
 				warn("Data are lost for partition, create a new one, partition id: {}, node: {}", deletedPrimaryPart, targetNode);						
 				
 				getRemoteNode(targetNode.getNodeId()).createPartition(NodeSection.PRIMARY, deletedPrimaryPart.getPartitionId());
+								
+				pt.getEntryForPartition(deletedPrimaryPart.getPartitionId()).setPrimaryNode(targetNode.getNodeId()); //update PartitionTable
 			}
 		}
 		
@@ -587,7 +602,7 @@ public class Node /*implements RemoteNode*/ {
 	
 	private void processAddSecondary(NodeEntry newNode, boolean isBalanced, List<PartitionTableEntry> primaryPartitions) {				
 		if (isBalanced) {									
-			int num = (pt.getPartitionsSize() * pt.getReplicationFactor()) / pt.getNodesSize(); //ignore remaining part of division
+			int num = (pt.getPartitionsSize() * pt.getReplicationFactor()) / pt.getNodesSize(false); //ignore remaining part of division
 			debug("Processing add secondary: balanced, num: {}", num);
 			
 			Set<PartitionTableEntry> addedParts = new HashSet<>(primaryPartitions); 
@@ -637,7 +652,7 @@ public class Node /*implements RemoteNode*/ {
 	}	
 	
 	private List<PartitionTableEntry> processAddPrimary(NodeEntry newNode, boolean isBalanced) {								
-		int num = pt.getPartitionsSize() / pt.getNodesSize(); //ignore remaining part of division
+		int num = pt.getPartitionsSize() / pt.getNodesSize(false); //ignore remaining part of division
 		debug("Processing add primary, num: {}", num);
 		
 		List<PartitionTableEntry> primaryPartitions = new ArrayList<>();
@@ -665,9 +680,10 @@ public class Node /*implements RemoteNode*/ {
 		return primaryPartitions;
 	}	
 	
+	//don't include deleted nodes
 	private List<NodeEntry> getNodes(List<NodeEntry> exclude) {
 		List<NodeEntry> nodes = new ArrayList<>();
-		for (NodeEntry n : pt.getNodeEntries()) {
+		for (NodeEntry n : pt.getNodeEntries(false)) {
 			if (!exclude.contains(n)) {
 				nodes.add(n);
 			}
@@ -768,7 +784,7 @@ public class Node /*implements RemoteNode*/ {
 		//logger.warn("Cluster is full, do nothing. partitionsCount: {}, nodesCount: {}", pt.getPartitionsSize(), pt.getNodesSize());
 		throw new RuntimeException(String.format(
 			"Failed to add node, because cluster is full. partitionsCount: %s, nodesCount: %s", 
-			pt.getPartitionsSize(), pt.getNodesSize()));
+			pt.getPartitionsSize(), pt.getNodesSize(false)));
 	}
 
 	private void initCluster(NodeEntry newNode) {
@@ -783,7 +799,11 @@ public class Node /*implements RemoteNode*/ {
 		pt.addNodeEntry(newNode); //update own PartitionTable
 		
 		for (int i = 0; i < pt.getPartitionsSize(); i ++) { //create primary partitions in this node
-			this.createPartition(NodeSection.PRIMARY, i);		
+			int partitionId = i;			
+			this.createPartition(NodeSection.PRIMARY, partitionId);	
+						
+			pt.getEntryForPartition(partitionId).setPrimaryNode(this.getId()); //update PartitionTable
+			
 		}									
 	}
 	
@@ -793,7 +813,7 @@ public class Node /*implements RemoteNode*/ {
 		
 		List<String> errors = new ArrayList<>();
 				
-		for (NodeEntry n : pt.getNodeEntries()) {
+		for (NodeEntry n : pt.getNodeEntries(true)) {
 			primaryTotal.addAll(n.getPrimaryPartitions());
 			secondaryTotal += n.getSecondaryPartitions().size();			
 			
@@ -820,7 +840,7 @@ public class Node /*implements RemoteNode*/ {
 		}
 		
 		if (pt.hasReplica()) {
-			int secExpected = (pt.getNodesSize() > pt.getReplicationFactor() ? pt.getReplicationFactor() : pt.getNodesSize() - 1) * pt.getPartitionsSize();
+			int secExpected = (pt.getNodesSize(true) > pt.getReplicationFactor() ? pt.getReplicationFactor() : pt.getNodesSize(true) - 1) * pt.getPartitionsSize();
 			if (secondaryTotal != secExpected) {
 				errors.add(String.format("Secondary total is not correct. Expected: %d, was: %d", secExpected, secondaryTotal));
 			}							
@@ -834,7 +854,7 @@ public class Node /*implements RemoteNode*/ {
 	}
 	
 	public boolean isEmpty() {
-		return this.pt.getNodesSize() == 0;
+		return this.pt.getNodesSize(false) == 0;
 	}
 
 	public PartitionTable getPartitionTable() {		
@@ -846,8 +866,10 @@ public class Node /*implements RemoteNode*/ {
 	 */
 	private void updatePartitionTable() {
 		debug("Updating partition table");
-		for (RemoteNode node : remoteNodes.values()) {
-			node.setPartitionTable(pt);
+		for (RemoteNode node : remoteNodes.values()) {	
+			if (pt.getNodeEntry(node.getId(), false) != null) { //don't call deleted node
+				node.setPartitionTable(pt);	
+			}			
 		}
 	}
 	
@@ -869,6 +891,10 @@ public class Node /*implements RemoteNode*/ {
 	}
 	private void info(String msg, Object... arguments) {
 		logger.info(logPrefix() + msg, arguments);
+	}
+	
+	private void trace(String msg, Object... arguments) {
+		logger.trace(logPrefix() + msg, arguments);
 	}
 	
 	private void debug(String msg, Object... arguments) {
