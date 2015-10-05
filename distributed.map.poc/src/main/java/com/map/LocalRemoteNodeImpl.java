@@ -56,7 +56,7 @@ public class LocalRemoteNodeImpl implements RemoteNode {
 
 	@Override
 	public void addPartition(NodeSection section, Partition partition) {
-		getNode().addPartition(Utils.copy(partition, Partition.class), section);		
+		getNode().addPartition(section, Utils.copy(partition, Partition.class));		
 	}
 
 	@Override

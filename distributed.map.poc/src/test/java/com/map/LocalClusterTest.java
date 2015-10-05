@@ -102,7 +102,6 @@ public class LocalClusterTest {
 		}
 	}
 		
-	//FIXME: start here
 	/*
 	 * Remove 2 nodes: replication factor is not changed during removal.
 	 * No data loss.
@@ -276,7 +275,7 @@ public class LocalClusterTest {
 		
 		//delete 2 nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
-		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(0, false), pt.getNodeEntry(5, false));
+		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(1, false), pt.getNodeEntry(5, false));
 		//cluster.removeNodes(deletedNodes);
 		deleteNodes(deletedNodes);
 		
@@ -308,7 +307,7 @@ public class LocalClusterTest {
 		System.out.println("Remove nodes");
 		System.out.println("-------------------------------------------------------");
 		
-		//delete 2 nodes
+		//delete nodes
 		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
 		List<NodeEntry> deletedNodes = Arrays.asList(pt.getNodeEntry(1, false));
 		//cluster.removeNodes(deletedNodes);
@@ -430,25 +429,31 @@ public class LocalClusterTest {
 	}
 	
 	private void printPartitions() {
-		PartitionTable pt = getFirstNodeInCluster().getPartitionTable();
+		RemoteNode firstNode = getFirstNodeInCluster();
+		if (firstNode != null) {
+			PartitionTable pt = firstNode.getPartitionTable();
 
-		System.out.println("----- Partition Table: -----");
-		pt.printDebug();
-		
-		System.out.println();
-		
-		System.out.println("----- Nodes sizes: -----");
-		System.out.printf("  id | primary | secondary%n");		
+			System.out.println("----- Partition Table: -----");
+			pt.printDebug();
 			
-		for (NodeEntry n : pt.getNodeEntries(true)) {
-			System.out.printf("%4d | %7d | %9d%n", n.getNodeId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());												
-		}		
-		System.out.println();
-		
-		System.out.println("----- Nodes Details: -----");		
-		for (NodeEntry n : pt.getNodeEntries(true)) {
-			System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getNodeId(), n.getPrimaryPartitions(), n.getSecondaryPartitions());
+			System.out.println();
+			
+			System.out.println("----- Nodes sizes: -----");
+			System.out.printf("  id | primary | secondary%n");		
+				
+			for (NodeEntry n : pt.getNodeEntries(true)) {
+				System.out.printf("%4d | %7d | %9d%n", n.getNodeId(), n.getPrimaryPartitionsCount(), n.getSecondaryPartitionsCount());												
+			}		
+			System.out.println();
+			
+			System.out.println("----- Nodes Details: -----");		
+			for (NodeEntry n : pt.getNodeEntries(true)) {
+				System.out.printf("node: %4s, primary: %s, secondary: %s%n", n.getNodeId(), n.getPrimaryPartitions(), n.getSecondaryPartitions());
+			}
+		} else {
+			System.out.println("Cluster is empty");
 		}
+
 		
 		System.out.println();								
 	}
@@ -523,8 +528,12 @@ public class LocalClusterTest {
 		return (RemoteNodeMap<String, String>) remoteNode.getMap(mapId);
 	}
 	
+	//return null if cluster is empty
 	private RemoteNode getFirstNodeInCluster() {				
 		Map<Integer, Node> nodes = LocalNodes.getInstance().getNodes();
+		if (nodes.isEmpty()) {
+			return null;
+		}
 		Integer nodeId = nodes.keySet().iterator().next();
 		
 		InetAddress address = null;

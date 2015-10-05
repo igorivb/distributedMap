@@ -148,7 +148,7 @@ public class NodeMap<K, V> implements Map<K, V> {
 	
 	@SuppressWarnings("unchecked")
 	private RemoteNodeMap<K, V> getRemoteNodeMap(NodeEntry nodeEntry, String mapId) {
-		RemoteNode remoteNode = this.curNode.getRemoteNode(nodeEntry.getNodeId());
+		INode remoteNode = this.curNode.getRemoteNode(nodeEntry.getNodeId());
 		return (RemoteNodeMap<K, V>) remoteNode.getMap(mapId);
 	}
 		
