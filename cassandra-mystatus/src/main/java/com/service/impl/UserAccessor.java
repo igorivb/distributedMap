@@ -1,7 +1,6 @@
 package com.service.impl;
 
-import java.util.List;
-
+import com.datastax.driver.mapping.Result;
 import com.datastax.driver.mapping.annotations.Accessor;
 import com.datastax.driver.mapping.annotations.Query;
 import com.model.User;
@@ -9,6 +8,6 @@ import com.model.User;
 @Accessor
 public interface UserAccessor {
 
-	@Query("select * from user")
-	List<User> getAllUsers();
+	@Query("select * from my_status.users")
+	Result<User> getAllUsers();
 }

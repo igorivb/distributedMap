@@ -1,0 +1,6 @@
+1. User:
+use location and version fields in tests - there maybe problems with timestamps
+
+2.  write unit tests with Cassandra Unit
+
+3. try asynchronous methods 
