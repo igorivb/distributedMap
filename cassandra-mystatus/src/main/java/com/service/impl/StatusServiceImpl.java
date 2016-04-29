@@ -1,14 +1,17 @@
 package com.service.impl;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PagingState;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.Statement;
+import com.datastax.driver.core.BatchStatement.Type;
 import com.datastax.driver.mapping.MappingManager;
 import com.datastax.driver.mapping.Result;
 import com.model.HomeStatusUpdate;
@@ -29,6 +32,7 @@ public class StatusServiceImpl implements StatusService {
 	private MappingManager manager;
 		
 	private PreparedStatement QUERY_GET_USER_STATUS_UPDATES;
+	private PreparedStatement QUERY_GET_HOME_STATUS_UPDATES;
 	
 	public StatusServiceImpl() { }
 	
@@ -41,7 +45,9 @@ public class StatusServiceImpl implements StatusService {
 	public void init() {		
 		manager = new MappingManager(session);
 				
-		QUERY_GET_USER_STATUS_UPDATES = session.prepare("select * from my_status.user_status_updates where username = ?");		
+		QUERY_GET_USER_STATUS_UPDATES = session.prepare("select * from my_status.user_status_updates where username = ?");
+		
+		QUERY_GET_HOME_STATUS_UPDATES = session.prepare("select * from my_status.home_status_updates where timeline_username = ?");		
 	}
 	
 	@Override
@@ -100,9 +106,27 @@ public class StatusServiceImpl implements StatusService {
 	@Override
 	public void close() { }
 
+	/*
+	 * Steps:
+	 * 	get followers of user
+	 * 	insert row into user_status_updates	
+	 *	for each follower: insert row into its home_status_updates
+	 */
 	@Override
 	public void createStatusUpdate(StatusUpdate status) {
-		manager.mapper(StatusUpdate.class).save(status);		
+		List<String> followers = getFollowerUsers(status.getUserName());
+		
+		//use batch so we atomically insert		
+		BatchStatement batch = new BatchStatement(Type.LOGGED);
+		
+		batch.add(manager.mapper(StatusUpdate.class).saveQuery(status));
+				
+		for (String follower : followers) {			
+			HomeStatusUpdate homeStatus = new HomeStatusUpdate(follower, status.getId(), status.getUserName(), status.getBody());
+			batch.add(manager.mapper(HomeStatusUpdate.class).saveQuery(homeStatus));
+		}	
+		
+		session.execute(batch);
 	}
 	
 	@Override
@@ -118,7 +142,7 @@ public class StatusServiceImpl implements StatusService {
 			st.setPagingState(PagingState.fromString(pageState));	
 		}
 						
-		ResultSet resultSet = session.execute(st);
+		ResultSet resultSet = session.execute(st);				
 		
 		PagingState ps = resultSet.getExecutionInfo().getPagingState();
 		String newPageState = null; 
@@ -143,25 +167,46 @@ public class StatusServiceImpl implements StatusService {
 	
 	@Override
 	public void createFollow(String followedUsername, String followerUsername) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public List<String> getFollowedUsers(String userName) {
-		// TODO Auto-generated method stub
-		return null;
+		manager.mapper(UserFollow.class).save(new UserFollow(followedUsername, followerUsername));		
 	}
 
 	@Override
 	public List<String> getFollowerUsers(String userName) {
-		// TODO Auto-generated method stub
-		return null;
+		List<String> res = new ArrayList<>();
+		manager
+			.createAccessor(UserFollowAccessor.class).getInUsers(userName)
+			.forEach(f -> res.add(f.getFollowerUserName()));
+		return res;
+	}
+	
+	@Override
+	public List<String> getFollowedUsers(String userName) {
+		List<String> res = new ArrayList<>();				
+		manager
+			.createAccessor(UserFollowAccessor.class).getOutUsers(userName)
+			.forEach(f -> res.add(f.getFollowedUserName()));
+		return res;
 	}
 
 	@Override
-	public List<HomeStatusUpdate> getHomeStatusUpdates(String userName) {
-		// TODO Auto-generated method stub
-		return null;
+	public List<HomeStatusUpdate> getHomeStatusUpdates(String userName, int maxResults) {
+		Statement st = QUERY_GET_HOME_STATUS_UPDATES.bind(userName);
+		st.setFetchSize(maxResults);
+		
+		ResultSet resultSet = session.execute(st);
+		Result<HomeStatusUpdate> result = manager.mapper(HomeStatusUpdate.class).map(resultSet);
+		
+		List<HomeStatusUpdate> statusList = new ArrayList<>();
+				
+		int remaining = maxResults;
+		for (HomeStatusUpdate status : result) {
+			statusList.add(status);
+			
+			if (--remaining == 0) {
+				break;
+			}
+		}
+		
+		return statusList;
 	}	
 }

@@ -7,9 +7,134 @@ see StatusServiceImplEmbeddedTest
 
 1. Ignore StatusServiceImplLocalTest in unit tests launched by pom.xml
 
-1. implement working with status updates
+2. Continue implementation with status updates
 
 2. User:
 use location and version fields in tests - there maybe problems with timestamps
 
 3. try asynchronous methods 
+
+
+
+---------------------------------------------
+
+
+Global steps:
+1. create list of operations/queries
+2. design C* schemas
+3. implement in Java
+
+Operations:
+
+----------------------------
+I Status updates:
+
+Track user status updates and home status updates.
+Use fully denormalized approach for 'home status updates'.
+When we insert user status update, need also to update 'home status updates' for every follower.
+Use batch statements for updates.
+
+1. create status update	
+	insert row into user_status_updates
+	get followers of user
+	for each follower: insert row into home_status_updates
+	
+2. get status updates for user - paginated
+3. get specific status update (by username and id)
+	4. get for specific time range (start date and end date)   ?
+5. display home timeline for user: paginated
+
+
+
+	
+----------------------------	
+II Replies on status updates
+
+Do we need to implement it? E.g. follow relationship seems more interesting.
+
+
+----------------------------
+III Follow relationships
+Use 2 tables or secondary index ?
+	Use secondary index for simplicity.
+
+1. create relationship
+	fill home_status_updates for user					optional
+
+2. delete relationship			don't need now
+	delete related home_status_updates					optional 
+	
+3. get followers of user		?
+4. get followed for user		?
+	
+
+
+CREATE TABLE "user_status_updates" (
+"username" text,
+"id" timeuuid,
+"body" text,
+PRIMARY KEY ("username", "id")
+);
+
+
+INSERT INTO "user_status_updates"
+("username", "id", "body")
+VALUES (
+'alice',
+76e7a4d0-e796-11e3-90ce-5f98e903bf02,
+'Learning Cassandra!'
+);
+
+
+
+CREATE TABLE "home_status_updates" (
+"timeline_username" text,
+"status_update_id" timeuuid,
+"status_update_username" text,
+"body" text,
+PRIMARY KEY ("timeline_username", "status_update_id")
+) WITH CLUSTERING ORDER BY ("status_update_id" DESC);
+
+
+
+----------------------
+
+
+CREATE TABLE "status_update_replies" (
+"status_update_username" text,
+"status_update_id" timeuuid,
+"id" timeuuid,
+"author_username" text,
+"body" text,
+PRIMARY KEY (
+("status_update_username", "status_update_id"),
+"id"
+)
+);
+
+
+
+----------------------
+
+
+CREATE TABLE "user_outbound_follows" (
+"follower_username" text,
+"followed_username" text,
+PRIMARY KEY ("follower_username", "followed_username")
+);
+
+
+CREATE TABLE "user_inbound_follows" (
+"followed_username" text,
+"follower_username" text,
+PRIMARY KEY ("followed_username", "follower_username")
+);
+
+
+OR 
+
+CREATE TABLE "user_follows" (
+"followed_username" text,
+"follower_username" text,
+PRIMARY KEY ("followed_username", "follower_username")
+);

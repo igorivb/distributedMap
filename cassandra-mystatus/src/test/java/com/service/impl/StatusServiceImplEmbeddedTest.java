@@ -1,6 +1,7 @@
 package com.service.impl;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.List;
 
 import org.cassandraunit.CassandraCQLUnit;
@@ -11,6 +12,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 
+import com.model.HomeStatusUpdate;
 import com.model.StatusUpdate;
 import com.model.User;
 import com.service.PagedResult;
@@ -129,11 +131,128 @@ public class StatusServiceImplEmbeddedTest {
 			} else { //last element
 				Assert.assertEquals(statusNum - pageSize * j, resultList.getList().size());
 				Assert.assertNull(resultList.getPageState());
-			}								
+			}	
+			
+//			for (StatusUpdate su : resultList.getList()) {
+//				System.out.printf("User: %s | %s | %s%n", su.getUserName(), su.getBody(), UUIDs.unixTimestamp(su.getId()));
+//			}
 		}
 		
 		Assert.assertEquals(iterCount, j);					
 	} 
+	
+	@Test
+	public void testGetFollowerUsers() {
+		String alice = "alice";
+		statusService.createFollow(alice, "bob");
+		statusService.createFollow(alice, "dave");
+		statusService.createFollow(alice, "cat");		
+		statusService.createFollow("sam", alice);
+				
+		List<String> followers = statusService.getFollowerUsers(alice);
+		Assert.assertEquals(3, followers.size());
+		
+		List<String> followed = statusService.getFollowedUsers(alice);
+		Assert.assertEquals(1, followed.size());
+		
+	}
+	
+	@Test
+	public void testGetFollowedUsers() {
+		String alice = "alice";
+		statusService.createFollow("bob", alice);
+		statusService.createFollow("dave", alice);
+		statusService.createFollow("cat", alice);		
+		statusService.createFollow(alice, "sam");
+				
+		List<String> followers = statusService.getFollowerUsers(alice);
+		Assert.assertEquals(1, followers.size());
+		
+		List<String> followed = statusService.getFollowedUsers(alice);
+		Assert.assertEquals(3, followed.size());
+		
+	}
+		
+	@Test
+	public void testGetHomeStatusUpdates1() {
+		String alice = "alice";
+		statusService.createFollow(alice, "bob");
+		statusService.createFollow(alice, "dave");
+		statusService.createFollow(alice, "cat");		
+		statusService.createFollow("sam", alice);
+		
+		StatusUpdate statusUpdate = createStatusUpdate(alice, "alice update");
+		statusService.createStatusUpdate(statusUpdate);
+		
+		final int maxResults = 5; 
+		
+		List<String> users = Arrays.asList("bob", "dave", "cat");
+		for (String user : users) {
+			List<HomeStatusUpdate> homeUpdates = statusService.getHomeStatusUpdates(user, maxResults);
+			Assert.assertEquals(1, homeUpdates.size());
+			
+			HomeStatusUpdate hu = homeUpdates.get(0);
+			compareHomeStatusUpdate(statusUpdate, hu);
+		}
+	}
+	
+	@Test
+	public void testGetHomeStatusUpdatesSimple2() {
+		String alice = "alice";
+		statusService.createFollow("bob", alice);
+		statusService.createFollow("dave", alice);
+		statusService.createFollow("sam", alice);
+		statusService.createFollow(alice, "cat");		
+				
+		StatusUpdate b1 = createStatusUpdate("bob", "bob 1");
+		statusService.createStatusUpdate(b1);
+		
+		StatusUpdate d1 = createStatusUpdate("dave", "dave 1");
+		statusService.createStatusUpdate(d1);
+		
+		StatusUpdate s1 = createStatusUpdate("sam", "sam 1");
+		statusService.createStatusUpdate(s1);
+		
+		StatusUpdate c1 = createStatusUpdate("cat", "cat 1");
+		statusService.createStatusUpdate(c1);
+		
+		StatusUpdate a1 = createStatusUpdate("alice", "alice 1");
+		statusService.createStatusUpdate(a1);
+		
+		StatusUpdate b2 = createStatusUpdate("bob", "bob 2");
+		statusService.createStatusUpdate(b2);
+		
+		final int maxResults = 5; 
+		
+		List<HomeStatusUpdate> homeUpdates = statusService.getHomeStatusUpdates(alice, maxResults);
+		Assert.assertEquals(4, homeUpdates.size());
+		
+		for (HomeStatusUpdate hu : homeUpdates) {
+			switch (hu.getStatusUpdateUserName()) {
+				case "bob":	
+					if (hu.getBody().contains("1")) {
+						compareHomeStatusUpdate(b1, hu);
+					} else {
+						compareHomeStatusUpdate(b2, hu);
+					}
+					break;
+				case "dave":
+					compareHomeStatusUpdate(d1, hu);
+					break;
+				case "sam":
+					compareHomeStatusUpdate(s1, hu);
+					break;
+				default:
+					Assert.fail("Not expected user: " + hu.getStatusUpdateUserName());
+			}
+		}
+	}
+	
+	static void compareHomeStatusUpdate(StatusUpdate su, HomeStatusUpdate hu) {
+		Assert.assertEquals(su.getUserName(), hu.getStatusUpdateUserName());
+		Assert.assertEquals(su.getId(), hu.getStatusUpdateId());
+		Assert.assertEquals(su.getBody(), hu.getBody());
+	}
 	
 	static StatusUpdate createStatusUpdate(String userName, String body) {
 		return new StatusUpdate(userName, body);

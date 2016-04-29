@@ -28,3 +28,6 @@ CREATE TABLE user_follows (
 	follower_username text,
 	PRIMARY KEY (followed_username, follower_username)
 );
+
+--create secondary index
+CREATE INDEX ON user_follows (follower_username);

@@ -40,7 +40,7 @@ public interface StatusService {
 	List<String> getFollowedUsers(String userName);
 	
 	/**
-	 * Return all follower users.
+	 * Return all follower users. Core query access pattern.
 	 */
 	List<String> getFollowerUsers(String userName);
 	
@@ -56,7 +56,7 @@ public interface StatusService {
 	/**
 	 * Return last N status updates, so don't need pagination here.
 	 */
-	List<HomeStatusUpdate> getHomeStatusUpdates(String userName);
+	List<HomeStatusUpdate> getHomeStatusUpdates(String userName, int maxResults);
 	
 	//------------------ Lifecycle. Maybe we don't need it?
 	
