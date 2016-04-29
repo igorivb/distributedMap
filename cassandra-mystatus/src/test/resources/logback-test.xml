@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- log INFO or higher messages to the console -->
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d %-5p [%thread] %c %msg%n</pattern>
+        </encoder>
+    </appender>
+   
+    <!-- use AsyncAppender for lower latencies -->
+    <appender name="async" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="console" />
+    </appender>
+	
+	<!-- 
+		Log queries. TRACE level shows values of  parameters.  
+	-->
+	<logger name="com.datastax.driver.core.QueryLogger.NORMAL" level="TRACE" />
+
+    <root level="INFO">
+        <appender-ref ref="async" />
+    </root>
+    
+    
+
+</configuration>

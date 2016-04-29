@@ -14,14 +14,16 @@ public interface StatusService {
 	
 	void deleteUser(String userName);	
 	
-	//TODO: use paginated version
+	/**
+	 * This query is only for demo purposes. Use paged version instead.
+	 */
 	List<User> getAllUsers();
 	
-	
+	/**
+	 * If there are no more results, pagesState is null.
+	 */
+	UsersList getUsersPages(int pageSize, String pageState);
 	
 	
 	void close();
-	
-//	//TODO: make paginated
-//	List<User> getAccounts();
 }

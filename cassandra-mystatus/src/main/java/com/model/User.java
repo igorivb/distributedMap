@@ -1,7 +1,6 @@
 package com.model;
 
 import java.nio.ByteBuffer;
-import java.util.UUID;
 
 import com.datastax.driver.mapping.annotations.Column;
 import com.datastax.driver.mapping.annotations.PartitionKey;
@@ -22,9 +21,9 @@ public class User {
 	@Column(name = "encrypted_password")
 	private ByteBuffer encryptedPassword;
 	
-	//TODO: use these fields in tests
-    private String location;       
-    private UUID version;        
+//	//TODO: use these fields in tests
+//    private String location;       
+//    private UUID version;        
 
     public User() { }
     
@@ -59,21 +58,21 @@ public class User {
 		this.encryptedPassword = encryptedPassword;
 	}
 
-	public String getLocation() {
-		return location;
-	}
-
-	public void setLocation(String location) {
-		this.location = location;
-	}
-
-	public UUID getVersion() {
-		return version;
-	}
-
-	public void setVersion(UUID version) {
-		this.version = version;
-	}
+//	public String getLocation() {
+//		return location;
+//	}
+//
+//	public void setLocation(String location) {
+//		this.location = location;
+//	}
+//
+//	public UUID getVersion() {
+//		return version;
+//	}
+//
+//	public void setVersion(UUID version) {
+//		this.version = version;
+//	}
 
 	@Override
 	public int hashCode() {
@@ -119,7 +118,8 @@ public class User {
 	@Override
 	public String toString() {
 		return "User [userName=" + userName + ", email=" + email
-				+ ", location=" + location + "]";
+				//+ ", location=" + location 
+				+ "]";
 	}		
     
 }

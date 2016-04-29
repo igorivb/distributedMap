@@ -1,3 +1,7 @@
+Driver manual
+http://datastax.github.io/java-driver/manual/object_mapper/using/
+
+
 1. User:
 use location and version fields in tests - there maybe problems with timestamps
 
