@@ -29,7 +29,7 @@
 			<dependency>
 			    <groupId>com.google.guava</groupId>
 			    <artifactId>guava</artifactId>
-			    <version>16.0.1</version>
+			    <version>18.0</version>
 			</dependency>	
 			<dependency>
 				<groupId>junit</groupId>
@@ -79,18 +79,20 @@
 		<dependency>
 		    <groupId>org.cassandraunit</groupId>
 		    <artifactId>cassandra-unit</artifactId>
-		    <version>2.1.9.2</version>
+		    <version>3.0.0.1</version>
 		    <scope>test</scope>
-		    <exclusions>
+		    <!--
+		    <exclusions>		    	  
 		        <exclusion>
 		            <groupId>org.apache.cassandra</groupId>
 		            <artifactId>cassandra-all</artifactId>
-		        </exclusion>
+		        </exclusion>		        
 		        <exclusion>
 		            <groupId>org.hectorclient</groupId>
 		            <artifactId>hector-core</artifactId>
 		        </exclusion>
-		    </exclusions>		    
+		    </exclusions>
+		    -->		    
 		</dependency>		
 		
 	</dependencies>

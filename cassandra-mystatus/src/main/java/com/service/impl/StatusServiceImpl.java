@@ -2,9 +2,7 @@ package com.service.impl;
 
 import java.util.List;
 
-import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.PagingState;
-import com.datastax.driver.core.QueryLogger;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SimpleStatement;
@@ -17,28 +15,25 @@ import com.service.UsersList;
 
 public class StatusServiceImpl implements StatusService {
 
-	private Cluster cluster;
 	private Session session;
+	
+	//TODO use one instance of MappingManager
+	/*
+	 * MappingManager is thread-safe and can be safely shared throughout your application. 
+	 * You would typically create one instance at startup, right after your Session
+	 */
 	private MappingManager manager;
 		
-	public StatusServiceImpl(String[] contactPoints) {
-		
-		//set other options if needed
-		
-		QueryLogger queryLogger = QueryLogger.builder()
-			//.withConstantThreshold(...)
-			//.withMaxQueryStringLength(...)
-			.build();
-		
-		cluster = Cluster.builder()
-			.addContactPoints(contactPoints)
-	        .build();
-	    
-		cluster.register(queryLogger);
-		
-	    session = cluster.connect();
-	    
-	    manager = new MappingManager(session);	  	    	   
+	public StatusServiceImpl() { }
+	
+	//One session may be used by many services.
+	public void setSession(Session session) {
+		this.session = session;
+	}
+	
+	@Override
+	public void init() {		
+		manager = new MappingManager(session);	  	    
 	}
 	
 	@Override
@@ -96,8 +91,5 @@ public class StatusServiceImpl implements StatusService {
 	}
 	
 	@Override
-	public void close() {
-		session.close();
-		cluster.close(); 
-	}	
+	public void close() { }	
 }

@@ -8,6 +8,9 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.QueryLogger;
+import com.datastax.driver.core.Session;
 import com.model.User;
 import com.service.StatusService;
 import com.service.UsersList;
@@ -17,17 +20,47 @@ import com.service.UsersList;
  */
 public class StatusServiceImplLocalTest {
 
+	private static Cluster cluster;
+	private static Session session;
+	
 	private static StatusService statusService;
 	
 	@BeforeClass
 	public static void setUp() {
 		String[] contactPoints = { "127.0.0.1" };
-		statusService = new StatusServiceImpl(contactPoints);
+		
+		//set other options if needed		
+		QueryLogger queryLogger = QueryLogger.builder()
+			//.withConstantThreshold(...)
+			//.withMaxQueryStringLength(...)
+			.build();
+		
+		cluster = Cluster.builder()
+			.addContactPoints(contactPoints)
+	        .build();
+	    
+		cluster.register(queryLogger);
+		
+		session = cluster.connect();
+		
+		statusService = new StatusServiceImpl();		
+		((StatusServiceImpl) statusService).setSession(session);
+		statusService.init();
 	}
 	
 	@AfterClass
-	public static void tearDown() {
-		statusService.close();
+	public static void tearDown() {		
+		if (statusService != null) {
+			statusService.close();	
+		}
+		
+		if (session != null) {
+			session.close();	
+		}
+		
+		if (cluster != null) {
+			cluster.close();	
+		}		
 	}
 	
 	@Test

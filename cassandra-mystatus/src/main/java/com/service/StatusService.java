@@ -25,5 +25,9 @@ public interface StatusService {
 	UsersList getUsersPages(int pageSize, String pageState);
 	
 	
+	//------------------ Lifecycle. Maybe we don't need it?
+	
+	void init();
+	
 	void close();
 }
