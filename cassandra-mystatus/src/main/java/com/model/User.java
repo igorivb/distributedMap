@@ -7,9 +7,10 @@ import com.datastax.driver.mapping.annotations.PartitionKey;
 import com.datastax.driver.mapping.annotations.Table;
 
 @Table(
-keyspace = "my_status", 
-name = "users", 
-writeConsistency = "QUORUM", readConsistency = "QUORUM")
+	keyspace = "my_status", 
+	name = "users", 
+	writeConsistency = "QUORUM", readConsistency = "QUORUM"
+)
 public class User {
 	
 	@PartitionKey

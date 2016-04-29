@@ -1,14 +1,17 @@
 package com.service;
 
 import java.util.List;
+import java.util.UUID;
 
+import com.model.HomeStatusUpdate;
+import com.model.StatusUpdate;
 import com.model.User;
 
 public interface StatusService {
 
 	//------------------ User
 	
-	User createUser(User user);
+	void createUser(User user);
 	
 	User getUser(String userName);
 	
@@ -22,8 +25,38 @@ public interface StatusService {
 	/**
 	 * If there are no more results, pagesState is null.
 	 */
-	UsersList getUsersPages(int pageSize, String pageState);
+	PagedResult<User> getUsers(int pageSize, String pageState);
 	
+	
+	//------------------ Follow relationship
+	
+	void createFollow(String followedUsername, String followerUsername);		
+	
+	//void deleteFollow(String followedUsername, String followerUsername);
+	
+	/**
+	 * Return all follower users.
+	 */
+	List<String> getFollowedUsers(String userName);
+	
+	/**
+	 * Return all follower users.
+	 */
+	List<String> getFollowerUsers(String userName);
+	
+	
+	//------------------ Status updates
+	
+	void createStatusUpdate(StatusUpdate status);
+		
+	PagedResult<StatusUpdate> getUserStatusUpdates(String userName, int pageSize, String pageState);
+	
+	StatusUpdate getStatusUpdate(String username, UUID id);
+	
+	/**
+	 * Return last N status updates, so don't need pagination here.
+	 */
+	List<HomeStatusUpdate> getHomeStatusUpdates(String userName);
 	
 	//------------------ Lifecycle. Maybe we don't need it?
 	

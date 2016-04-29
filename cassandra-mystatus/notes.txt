@@ -2,9 +2,14 @@ Driver manual
 http://datastax.github.io/java-driver/manual/object_mapper/using/
 
 
-1. User:
-use location and version fields in tests - there maybe problems with timestamps
+0. what is Rule in junit ?
+see StatusServiceImplEmbeddedTest
 
-2.  write unit tests with Cassandra Unit
+1. Ignore StatusServiceImplLocalTest in unit tests launched by pom.xml
+
+1. implement working with status updates
+
+2. User:
+use location and version fields in tests - there maybe problems with timestamps
 
 3. try asynchronous methods 

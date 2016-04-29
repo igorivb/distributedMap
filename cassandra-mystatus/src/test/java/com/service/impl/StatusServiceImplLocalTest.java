@@ -12,8 +12,8 @@ import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.QueryLogger;
 import com.datastax.driver.core.Session;
 import com.model.User;
+import com.service.PagedResult;
 import com.service.StatusService;
-import com.service.UsersList;
 
 /**
  * Use local Cassandra instance, which is already installed. 
@@ -110,14 +110,14 @@ public class StatusServiceImplLocalTest {
 			
 			int j;
 			for (j = 0; j < iterCount; j ++) {								
-				UsersList usersList = statusService.getUsersPages(pageSize, pageState);				
+				PagedResult<User> usersList = statusService.getUsers(pageSize, pageState);				
 				pageState = usersList.getPageState();
 				
 				if (j < iterCount - 1) {
-					Assert.assertEquals(pageSize, usersList.getUsers().size());
+					Assert.assertEquals(pageSize, usersList.getList().size());
 					Assert.assertNotNull(usersList.getPageState());
 				} else { //last element
-					Assert.assertEquals(usersNum - pageSize * j, usersList.getUsers().size());
+					Assert.assertEquals(usersNum - pageSize * j, usersList.getList().size());
 					Assert.assertNull(usersList.getPageState());
 				}								
 			}
