@@ -18,22 +18,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 //read and write. Connect to one server.
 public class MyClient {
+	
+	final int clientThreads = 1;
+	
+	final AtomicInteger readNum = new AtomicInteger();
 
-	static class MessageWrapper {
-		ByteBuffer buf;
-		Message msg;		
-		public MessageWrapper(ByteBuffer buf, Message msg) {
-			super();
-			this.buf = buf;
-			this.msg = msg;
-		}		
-	}
+	final AtomicInteger writeNum= new AtomicInteger();
 	
+	//messages to process (send to server)
 	private BlockingQueue<Message> writeQueue = new ArrayBlockingQueue<>(10);
-	
-	final int clientThreads = 2;
-	
-	final AtomicInteger correlationIds = new AtomicInteger();
+			
+	final AtomicInteger correlationIds = new AtomicInteger(1);
 	
 	void generateRequests() {													
 		ExecutorService executorService = Executors.newFixedThreadPool(clientThreads);
@@ -62,11 +57,11 @@ public class MyClient {
 				}
 			});
 		}
-	}
+	}		
 	
-	int writeNum = 0;
-	
-	public void exec() throws Exception {		
+	public void exec() throws Exception {	
+		System.out.printf("Client threads: %d%n", clientThreads);
+		
 		generateRequests();					
 					
 		Selector selector = initConnections();			
@@ -79,51 +74,123 @@ public class MyClient {
 			Iterator<SelectionKey> iter = keys.iterator();
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
-				SocketChannel socketChannel = (SocketChannel) key.channel();							
-				MessageWrapper msgWrapper = (MessageWrapper) key.attachment();
-				ByteBuffer buf = msgWrapper.buf;
-				
-				if (key.isWritable()) {
-				
-					if (msgWrapper.msg == null) { //get new element to process
-						Message msg = msgWrapper.msg = writeQueue.poll(); //non blocking
-						if (msg != null) {
-							//System.out.println("Start processing message: " + msg);																
-							
-							buf.putInt(msg.n1);
-							buf.putInt(msg.n2);
-							buf.putInt(msg.client);
-							buf.putInt(msg.correlationId);
-							
-							buf.flip();
-						}
-					}
-					
-					if (msgWrapper.msg != null) {
-						socketChannel.write(buf);	//if server closed connection: 	IOException: Broken pipe									
-						
-						if (!buf.hasRemaining()) {
-							System.out.printf("%3d_%d. Sent: %s%n", writeNum++ + 1, msgWrapper.msg.client, msgWrapper.msg);
-							
-							msgWrapper.msg = null;						
-							buf.clear();							
-						}
-						
-						iter.remove();
-					}																						
-				}
+				boolean removeKey = false;
 				
 				if (key.isReadable()) {
-					//TODO: implement later
-				}																	
+					doRead(key);	
+					
+					removeKey = true;	
+				} 
+				
+				if (key.isWritable()) {
+					if (doWrite(key)) {
+						removeKey = true;	
+					}							
+				}			
+				
+				if (removeKey) {
+					iter.remove(); //remove so we don't process it twice	
+				}
 			}
 			
 		}		
 		
 		//executorService.shutdownNow();		
 	}
-
-	Selector initConnections() throws IOException {
+		
+	private void handleMessage(MessageResponse msg) {										
+		System.out.printf("%3d_%d. Read: %s%n", readNum.incrementAndGet(), msg.client, msg);		
+		
+		//TODO: notify user by correlation id about result
+	}
+	
+	void doRead(SelectionKey key) throws IOException {
+		SelectionWrapper selectionWrapper = (SelectionWrapper) key.attachment();
+		SocketChannel socketChannel = (SocketChannel) key.channel();
+		
+		OutputPart ioPart = selectionWrapper.writePart;
+		ByteBuffer buf = ioPart.buf;
+																						
+		int byteRead = socketChannel.read(buf);
+		
+		if (byteRead == -1) { //eof										
+			System.out.println("Closed connection to: " + socketChannel.getRemoteAddress());
+			
+			key.cancel();
+			socketChannel.close();		
+			
+			//throw new EOFException("Remote socket closed!");			
+			return;
+		} 
+		
+		if (byteRead > 0) {
+			buf.flip();														
+			boolean isFull = ioPart.msg.read(buf);
+			
+			if (buf.hasRemaining()) {
+				buf.compact();	
+			} else {
+				buf.clear();
+			}								
+			
+			if (isFull) { //message is full: start processing and create new one
+				handleMessage(ioPart.msg);
+				
+				ioPart.msg = new MessageResponse();
+			}	
+		}								
+	}
+	
+	/**
+	 * 
+	 * @return true if selection key can be removed.
+	 */
+	boolean doWrite(SelectionKey key) throws IOException {
+		SelectionWrapper selectionWrapper = (SelectionWrapper) key.attachment();
+		SocketChannel socketChannel = (SocketChannel) key.channel();
+		
+		InputPart ioPart = selectionWrapper.readPart;
+		ByteBuffer buf = ioPart.buf;				
+		
+		//get message to write
+		if (ioPart.msg == null) {
+			ioPart.msg = writeQueue.poll(); // non blocking
+			if (ioPart.msg == null) {
+				return false;
+			}	
+		}
+		
+		boolean isFull = ioPart.msg.write(buf);
+		
+		if (buf.position() == 0) {
+			return false;
+		}
+		
+		
+		buf.flip();
+		
+		socketChannel.write(buf);  //if server closed connection: 	IOException: Broken pipe	
+		
+		if (buf.hasRemaining()) {
+			buf.compact();	
+		} else {
+			buf.clear();
+		}
+		
+									
+		if (isFull) { //message was sent, prepare for new one
+			System.out.printf("%3d_%d. Sent: %s%n", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg);
+			
+			ioPart.msg = null;						
+		}				
+		
+		return true;
+	}
+	
+	/*
+	 * Create one connection one, but it may connect to multiple servers.
+	 */
+	Selector initConnections() throws IOException {				
 		SocketAddress serverAddress = new InetSocketAddress("localhost", MyServer.SERVER_PORT);
 		
 		SocketChannel socketChannel =  SocketChannel.open();
@@ -137,8 +204,23 @@ public class MyClient {
 		final Selector selector = Selector.open();
 		SelectionKey key = socketChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE); //register for read and write
 				
-		ByteBuffer buf = ByteBuffer.allocate(16);
-		key.attach(new MessageWrapper(buf, null));
+		//ByteBuffer buf = ByteBuffer.allocate(16);
+		//key.attach(new MessageWrapper(buf, null));
+		
+		SelectionWrapper selectionWrapper = new SelectionWrapper();
+		
+		InputPart readPart = new InputPart();
+		selectionWrapper.readPart = readPart;
+		readPart.buf = ByteBuffer.allocate(16);
+		readPart.msg = null;
+		
+		OutputPart writePart = new OutputPart();
+		selectionWrapper.writePart = writePart;
+		writePart.buf = ByteBuffer.allocate(12);
+		writePart.msg = new MessageResponse();
+		
+		key.attach(selectionWrapper);		
+		
 		
 		return selector;
 	}
