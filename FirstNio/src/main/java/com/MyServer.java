@@ -14,8 +14,12 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /*
- * TODO:   
- *  1. implement that we can have multiple clients
+ * TODO:
+ *  1. server should remember to which client to send reponse.
+ *  Now I get error when I send response to client that didn't provide me this message. 
+ *    
+ *  2. implement that we can have multiple clients
+ *  	
  *  
  *  3. set correctly TCP options
  *  

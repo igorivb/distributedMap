@@ -8,22 +8,20 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
-import java.util.Random;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.log4j.Logger;
+
 //read and write. Connect to one server.
-public class MyClient {
-	
-	//default: 2
-	static final int clientThreads = 2;
-	
-	//default: 2
-	static final int numClients = 2;
+public class ClientServiceImpl implements ClientService {		
+
+	private final static Logger logger = Logger.getLogger(ClientServiceImpl.class);
 	
 	
 	final AtomicInteger readNum = new AtomicInteger();
@@ -34,80 +32,66 @@ public class MyClient {
 	private BlockingQueue<Message> writeQueue = new ArrayBlockingQueue<>(10);
 			
 	
-	//useb by all clients	
+	//useb by all clients, as correlationIds are unique for all clients
 	static final AtomicInteger correlationIds = new AtomicInteger(0);
+
+	Map<Integer, ResponseFuture> correlations = new ConcurrentHashMap<>();
 	
-	final int clientNum;
 	
+	private final int clientNum; //id of this client
 	
-	public MyClient(int clientNum) {
-		this.clientNum = clientNum;
-	}
-	
-	void generateRequests() {													
-		ExecutorService executorService = Executors.newFixedThreadPool(clientThreads);
-				
-		for (int i = 0; i < clientThreads; i ++) {
-			final int client = clientNum * clientThreads  + i;
-			executorService.execute(new Runnable() {	
-				Random rand = new Random(System.currentTimeMillis());
-				
-				@Override
-				public void run() {
-					while (true) {
-						try {
-							Message msg = new Message(rand.nextInt(10), rand.nextInt(10), client, correlationIds.incrementAndGet());								
-							writeQueue.put(msg);
-							
-							//TODO: return Future<Message> to use
-							
-							//wait some time between requests
-							Thread.sleep(rand.nextInt(1000) + 100);
-							
-						} catch (InterruptedException ie) {
-							break;
-						}
-					}										
-				}
-			});
-		}
+	public ClientServiceImpl(int clientNum)  {
+		this.clientNum = clientNum;				
 	}		
 	
-	public void exec() throws Exception {	
-		System.out.printf("Client threads: %d%n", clientThreads);
+	@Override
+	public void init() {								
+		Selector selector;
+		try {
+			selector = initConnections();
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}			
 		
-		generateRequests();					
+		Thread ioThread = new Thread(() -> {
+			try {
+				//process messages in infinite loop
+				while (true) {						
+					selector.select();
 					
-		Selector selector = initConnections();			
-		
-		//process messages in infinite loop
-		while (true) {						
-			selector.select();
-			
-			Set<SelectionKey> keys = selector.selectedKeys();
-			Iterator<SelectionKey> iter = keys.iterator();
-			while (iter.hasNext()) {
-				SelectionKey key = iter.next();
-				iter.remove();
-				
-				if (key.isReadable()) {
-					doRead(key);											
-				} 
-				
-				if (key.isWritable()) {
-					doWrite(key);		
+					Set<SelectionKey> keys = selector.selectedKeys();
+					Iterator<SelectionKey> iter = keys.iterator();
+					while (iter.hasNext()) {
+						SelectionKey key = iter.next();
+						iter.remove();
+						
+						if (key.isReadable()) {
+							doRead(key);											
+						} 
+						
+						if (key.isWritable()) {
+							doWrite(key);		
+						}			
+					}
+					
 				}			
-			}
-			
-		}		
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}			
+		}, "client-io-" + clientNum);	
 		
-		//executorService.shutdownNow();		
+		ioThread.start();
 	}
 		
-	private void handleMessage(MessageResponse msg) {										
-		System.out.printf("%3d_%d. Read: %s%n", readNum.incrementAndGet(), msg.client, msg);		
+	private void handleMessageResponse(MessageResponse msg) {										
+		logger.info(String.format("%3d_%d. Read: %s%n", readNum.incrementAndGet(), msg.client, msg));		
 		
-		//TODO: notify user by correlation id about result
+		ResponseFuture future = correlations.get(msg.correlationId);
+		if (future == null) {
+			logger.error("No registered ResponseFuture for correlationId: " + msg.correlationId);
+		} else {
+			future.processResult(msg);
+		}				
 	}
 	
 	void doRead(SelectionKey key) throws IOException {
@@ -140,7 +124,7 @@ public class MyClient {
 			}								
 			
 			if (isFull) { //message is full: start processing and create new one
-				handleMessage(ioPart.msg);
+				handleMessageResponse(ioPart.msg);
 				
 				ioPart.msg = new MessageResponse();
 			}	
@@ -185,7 +169,7 @@ public class MyClient {
 		
 									
 		if (isFull) { //message was sent, prepare for new one
-			System.out.printf("%3d_%d. Sent: %s%n", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg);
+			logger.info(String.format("%3d_%d. Sent: %s%n", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg));
 			
 			ioPart.msg = null;						
 		}				
@@ -229,21 +213,36 @@ public class MyClient {
 		
 		
 		return selector;
+	}			
+	
+	Future<MessageResponse> handleMessage(Message msg) {
+		try {
+			writeQueue.put(msg);						
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+		
+		ResponseFuture future = new ResponseFuture(this);
+		correlations.put(msg.correlationId, future);
+		
+		return future;
 	}
 	
-	public static void main(String[] args) throws Exception {				
-		for (int i = 0; i < numClients; i ++) {
-			final int clientNum = i;
-			Thread t = new Thread(() -> {			
-				try {					
-					MyClient client = new MyClient(clientNum);
-					client.exec();
-				} catch (Exception e) {
-					throw new RuntimeException(e);
-				}									
-			}, "client-main-" + i);
-			t.start();			
-		}								
+	@Override
+	public int add(int n1, int n2) {
+		try {
+			Message msg = new Message(n1, n2, clientNum, correlationIds.incrementAndGet());
+			
+			Future<MessageResponse> fResponse = handleMessage(msg);
+			MessageResponse response = fResponse.get(); //blocking to emulate sync call		
+			return response.result;			
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public void onCorrelationProcessed(int correlationId) {
+		correlations.remove(correlationId);		
 	}
 
 }
