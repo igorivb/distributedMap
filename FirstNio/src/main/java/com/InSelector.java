@@ -45,10 +45,9 @@ public class InSelector extends Thread {
 				
 				while (iter.hasNext()) {										
 					SelectionKey key = iter.next();					
-																																														
-					if (key.isReadable()) {						
-						iter.remove(); //remove so we don't process it twice
-						
+					iter.remove();
+					
+					if (key.isReadable()) {																		
 						doRead(key);														
 					} 				
 				}				
@@ -59,8 +58,8 @@ public class InSelector extends Thread {
 	}
 	
 	public void addTaskAndWakeup(Runnable task) {
-		selectionQueue.add(task);
 		selector.wakeup();
+		selectionQueue.add(task);		
 	}
 	
 	void processSelectionQueue() {		

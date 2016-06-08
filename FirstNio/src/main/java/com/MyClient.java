@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MyClient {
 	
 	//TODO: default: 2
-	final int clientThreads = 1;
+	final int clientThreads = 2;
 	
 	final AtomicInteger readNum = new AtomicInteger();
 

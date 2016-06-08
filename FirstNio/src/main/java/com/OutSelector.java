@@ -10,8 +10,13 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
+import org.apache.log4j.Logger;
+
 public class OutSelector extends Thread {
 
+	private final static Logger logger = Logger.getLogger(OutSelector.class);
+	
+	
 	final MyServer server;
 	final int num ;
 	
@@ -41,22 +46,24 @@ public class OutSelector extends Thread {
 				if (nKeys == 0) {
 					continue;
 				} else {
-					System.out.println("Keys num: " + nKeys);
-				}
-				
-				
+					logger.trace(String.format("Selector %d, keys num: %d", num, nKeys));
+				}								
 				
 				Set<SelectionKey> keys = selector.selectedKeys();
 				Iterator<SelectionKey> iter = keys.iterator();								
 				
 				while (iter.hasNext()) {										
-					SelectionKey key = iter.next();
+					SelectionKey key = iter.next();										
+					iter.remove();
+					
+					
+					logger.trace("Key operations: " + key.readyOps());
 					
 					if (key.isWritable()) {
-						if (doWrite(key)) {
-							iter.remove(); //remove so we don't process it twice
-						}							
-					}																
+						doWrite(key);																	
+					}	
+					
+					
 				}				
 			}	
 		} catch (IOException e) {
@@ -77,13 +84,17 @@ public class OutSelector extends Thread {
 		if (ioPart.msg == null) {
 			ioPart.msg = server.responsesQueue.poll(); // non blocking
 			if (ioPart.msg == null) {
+				
+				logger.trace("Message is empty: " + num);
+				
 				return false;
 			}	
 		}
 		
 		boolean isFull = ioPart.msg.write(buf);
 		
-		if (buf.position() == 0) {
+		if (buf.position() == 0) {			
+			logger.debug("Buffer is empty: " + num);
 			return false;
 		}
 		
@@ -100,7 +111,7 @@ public class OutSelector extends Thread {
 		
 									
 		if (isFull) { //message was sent, prepare for new one
-			System.out.printf("%3d_%d. Sent: %s%n", server.writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg);
+			logger.info(String.format("%3d_%d. Sent: %s%n", server.writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg));
 			
 			ioPart.msg = null;
 		}				
@@ -120,18 +131,18 @@ public class OutSelector extends Thread {
 	}
 	
 	public void addTaskAndWakeup(Runnable task) {
-		selectionQueue.add(task);
 		selector.wakeup();
+		selectionQueue.add(task);		
 	}
 	
 	//called only by 1 thread
 	public void register(SocketChannel socketChannel) throws IOException {
-		System.out.println("Add connection by OutSelector: " + num);
+		logger.debug("Adding connection by OutSelector: " + num);
 		
 		this.addTaskAndWakeup(() -> {
 			try {
 				
-				System.out.println("Register connection by OutSelector: " + num);
+				logger.debug("Register connection by OutSelector: " + num);
 				
 				OutputPart writePart = new OutputPart();		
 				writePart.buf = ByteBuffer.allocate(12);

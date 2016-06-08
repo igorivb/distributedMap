@@ -38,10 +38,10 @@ public class MyServer {
 	
 	public static int SERVER_PORT = 9898;
 	
-	final int workThreadsNum = 1;
+	final int workThreadsNum = 2;
 	
 	//TODO: default 2
-	final int ioThreadsNum = 1;
+	final int ioThreadsNum = 2;
 	
 	//---------------- Config: end
 	
