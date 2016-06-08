@@ -8,7 +8,9 @@ import java.util.concurrent.TimeoutException;
 /*
  * TODO:
  * 
- * 2. implement all methods
+ * 1. implement all methods
+ * 
+ * 2. Check how Hz implements it
  */
 public class ResponseFuture implements Future<MessageResponse> {
 

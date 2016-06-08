@@ -18,7 +18,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
 
-//read and write. Connect to one server.
+/*
+ * Read and write. Connect to one server.
+ * 
+ * TODO:
+ * 1. it can work with multiple servers inside and balance requests between them.
+ */
 public class ClientServiceImpl implements ClientService {		
 
 	private final static Logger logger = Logger.getLogger(ClientServiceImpl.class);

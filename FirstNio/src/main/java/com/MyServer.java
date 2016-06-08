@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /*
  * TODO:
- *  1. server should remember to which client to send reponse.
+ *  1. server should remember to which client to send response.
  *  Now I get error when I send response to client that didn't provide me this message. 
  *    
  *  2. implement that we can have multiple clients
