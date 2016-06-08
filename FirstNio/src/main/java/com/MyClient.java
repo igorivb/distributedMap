@@ -19,8 +19,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 //read and write. Connect to one server.
 public class MyClient {
 	
-	//TODO: default: 2
-	final int clientThreads = 2;
+	//default: 2
+	static final int clientThreads = 2;
+	
+	//default: 2
+	static final int numClients = 2;
+	
 	
 	final AtomicInteger readNum = new AtomicInteger();
 
@@ -29,13 +33,22 @@ public class MyClient {
 	//messages to process (send to server)
 	private BlockingQueue<Message> writeQueue = new ArrayBlockingQueue<>(10);
 			
-	final AtomicInteger correlationIds = new AtomicInteger(0);
+	
+	//useb by all clients	
+	static final AtomicInteger correlationIds = new AtomicInteger(0);
+	
+	final int clientNum;
+	
+	
+	public MyClient(int clientNum) {
+		this.clientNum = clientNum;
+	}
 	
 	void generateRequests() {													
 		ExecutorService executorService = Executors.newFixedThreadPool(clientThreads);
 				
 		for (int i = 0; i < clientThreads; i ++) {
-			final int client = i;
+			final int client = clientNum * clientThreads  + i;
 			executorService.execute(new Runnable() {	
 				Random rand = new Random(System.currentTimeMillis());
 				
@@ -75,23 +88,15 @@ public class MyClient {
 			Iterator<SelectionKey> iter = keys.iterator();
 			while (iter.hasNext()) {
 				SelectionKey key = iter.next();
-				boolean removeKey = false;
+				iter.remove();
 				
 				if (key.isReadable()) {
-					doRead(key);	
-					
-					removeKey = true;	
+					doRead(key);											
 				} 
 				
 				if (key.isWritable()) {
-					if (doWrite(key)) {
-						removeKey = true;	
-					}							
+					doWrite(key);		
 				}			
-				
-				if (removeKey) {
-					iter.remove(); //remove so we don't process it twice	
-				}
 			}
 			
 		}		
@@ -226,12 +231,19 @@ public class MyClient {
 		return selector;
 	}
 	
-	public static void main(String[] args) throws Exception {
-		MyClient client1 = new MyClient();
-		client1.exec();
-		
-//		MyClient client2 = new MyClient();
-//		client2.exec();
+	public static void main(String[] args) throws Exception {				
+		for (int i = 0; i < numClients; i ++) {
+			final int clientNum = i;
+			Thread t = new Thread(() -> {			
+				try {					
+					MyClient client = new MyClient(clientNum);
+					client.exec();
+				} catch (Exception e) {
+					throw new RuntimeException(e);
+				}									
+			}, "client-main-" + i);
+			t.start();			
+		}								
 	}
 
 }
