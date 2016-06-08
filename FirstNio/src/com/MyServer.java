@@ -4,13 +4,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.util.Iterator;
-import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
@@ -20,212 +15,103 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /*
  * TODO: 
- * 	1. implement that we can have multiple servers and clients
- *  2. allow communication read write
+ * 	
+ *  1. Implement separate threads for read and write, so read and writes are splitted on threads.
+ *  
+ *  2. implement that we can have multiple servers and clients
+ *  
+ *  3. set correctly TCP options
+ *  
+ *  --------- Notes:
+ *  
+ *  1. By default Hz has 3 threads for read, 3 threads for write and 1 thread for accept.
+ *  Number of threads for read and write are configurable.
+ *  Accept thread is always 1.
  */
 
 
 //accept, read and write
-public class MyServer implements Runnable {
+public class MyServer {
 
+	
+	//---------------- Config: start
+	
 	public static int SERVER_PORT = 9898;
 	
-	final int workThreads = 1;
+	final int workThreadsNum = 1;
 	
-	final AtomicInteger readNum = new AtomicInteger();
+	//TODO: default 2
+	final int ioThreadsNum = 1;
 	
-	final AtomicInteger writeNum= new AtomicInteger();
+	//---------------- Config: end
 	
 	
+	InSelector[] inSelectors;
+	int inSelectorsPos;
+	
+	OutSelector[] outSelectors;
+	int outSelectorsPos;
+	
+	MySocketAcceptor socketAcceptor;
+	
+	
+	
+	
+	public final AtomicInteger readNum = new AtomicInteger();
+	
+	public final AtomicInteger writeNum= new AtomicInteger();
+	
+	
+	//TODO: which implementation is used in Hz ? 
 	//messages to process (messages that we read from client)
 	private BlockingQueue<Message> workQueue = new ArrayBlockingQueue<>(10);
 	
 	//processed messages (messages that we need to write to client)
-	private BlockingQueue<MessageResponse> responsesQueue = new ArrayBlockingQueue<>(10);
+	public BlockingQueue<MessageResponse> responsesQueue = new ArrayBlockingQueue<>(10);
 
-	@Override
-	public void run() {		
+	
+	private ServerSocketChannel createServerSocketChannel() throws IOException {
 		SocketAddress serverAddress = new InetSocketAddress(SERVER_PORT);
 		
-		try (ServerSocketChannel serverChannel = ServerSocketChannel.open()) {												
-			ServerSocket ss = serverChannel.socket();
-			ss.bind(serverAddress);												
-			
-			System.out.println("Listening in address: " + serverAddress);
-			
-			//TODO serverChannel.setOption(name, value)
-			serverChannel.configureBlocking(false); //not blocking
-			
-			Selector selector = Selector.open();
-			serverChannel.register(selector, SelectionKey.OP_ACCEPT); //register for accept												
+		ServerSocketChannel serverChannel = ServerSocketChannel.open();												
+		ServerSocket ss = serverChannel.socket();
+		ss.bind(serverAddress);												
 		
-			
-			while (true) {
-				
-				selector.select(); //blocking
-				
-				Set<SelectionKey> keys = selector.selectedKeys();
-				Iterator<SelectionKey> iter = keys.iterator();								
-				
-				while (iter.hasNext()) {										
-					SelectionKey key = iter.next();
-					boolean removeKey = false;
-					
-					if (key.isAcceptable()) { // accept new connection
-						doAccept(key);	
-						
-						removeKey = true;						
-					} else { // read or write																																							
-						if (key.isReadable()) {
-							doRead(key);	
-							
-							removeKey = true;
-						} 
-						
-						if (key.isWritable()) {
-							if (doWrite(key)) {
-								removeKey = true;
-							}							
-						}												
-					}
-					
-					if (removeKey) {
-						iter.remove(); //remove so we don't process it twice	
-					}
-					
-				}				
-			}
-			
-		} catch (IOException ie) {
-			throw new RuntimeException(ie);
-		}	
-	}	
-	
-	void doAccept(SelectionKey serverKey) throws IOException {
-		SocketChannel socketChannel = ((ServerSocketChannel) serverKey.channel()).accept();
-		socketChannel.configureBlocking(false);
-		//TODO socketChannel.setOption(name, value)
+		System.out.println("Listening in address: " + serverAddress);
 		
-		SelectionKey clientKey = socketChannel.register(serverKey.selector(), SelectionKey.OP_READ | SelectionKey.OP_WRITE); //register for read and write
+		//TODO serverChannel.setOption(name, value)
+		serverChannel.configureBlocking(false); //not blocking					
 		
-		//key2.attach(ByteBuffer.allocate(16));
-		SelectionWrapper selectionWrapper = new SelectionWrapper();
-		
-		InputPart readPart = new InputPart();
-		selectionWrapper.readPart = readPart;
-		readPart.buf = ByteBuffer.allocate(16);
-		readPart.msg = new Message();
-		
-		OutputPart writePart = new OutputPart();
-		selectionWrapper.writePart = writePart;
-		writePart.buf = ByteBuffer.allocate(12);
-		writePart.msg = null;
-		
-		clientKey.attach(selectionWrapper);
-		
-		
-		System.out.println("Accept client connection: " + socketChannel.getRemoteAddress());				
-	}		
-	
-	/**
-	 * 
-	 * @return true if selection key can be removed.
-	 */
-	boolean doWrite(SelectionKey key) throws IOException {
-		SelectionWrapper selectionWrapper = (SelectionWrapper) key.attachment();
-		SocketChannel socketChannel = (SocketChannel) key.channel();
-		
-		OutputPart ioPart = selectionWrapper.writePart;
-		ByteBuffer buf = ioPart.buf;				
-		
-		//get message to write
-		if (ioPart.msg == null) {
-			ioPart.msg = responsesQueue.poll(); // non blocking
-			if (ioPart.msg == null) {
-				return false;
-			}	
-		}
-		
-		boolean isFull = ioPart.msg.write(buf);
-		
-		if (buf.position() == 0) {
-			return false;
-		}
-		
-		
-		buf.flip();
-		
-		socketChannel.write(buf);
-		
-		if (buf.hasRemaining()) {
-			buf.compact();	
-		} else {
-			buf.clear();
-		}
-		
-									
-		if (isFull) { //message was sent, prepare for new one
-			System.out.printf("%3d_%d. Sent: %s%n", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg);
-			
-			ioPart.msg = null;
-		}				
-		
-		return true;
+		return serverChannel;
 	}
 	
-	//TODO: 1. check that it works if object is transfered in several iterations
-	//TODO: 2. how to handle if body size is more than ByteBuffer size ?
-	void doRead(SelectionKey key) throws IOException {
-		SelectionWrapper selectionWrapper = (SelectionWrapper) key.attachment();
-		SocketChannel socketChannel = (SocketChannel) key.channel();
+	public void exec() throws IOException {		
+		System.out.printf("Working threads num: %d%n", workThreadsNum);
+		System.out.printf("IO threads num: %d%n", ioThreadsNum);
 		
-		InputPart ioPart = selectionWrapper.readPart;
-		ByteBuffer buf = ioPart.buf;
-																						
-		int byteRead = socketChannel.read(buf);
+		//create selectors
 		
-		if (byteRead == -1) { //eof										
-			System.out.println("Closed connection to: " + socketChannel.getRemoteAddress());
-			
-			key.cancel();
-			socketChannel.close();		
-			
-			//throw new EOFException("Remote socket closed!");			
-			return;
-		} 
+		ServerSocketChannel serverChannel = createServerSocketChannel();
 		
-		if (byteRead > 0) {
-			buf.flip();														
-			boolean isFull = ioPart.msg.read(buf);
-			
-			if (buf.hasRemaining()) {
-				buf.compact();	
-			} else {
-				buf.clear();
-			}								
-			
-			if (isFull) { //message is full: start processing and create new one
-				handleMessage(ioPart.msg);
-				
-				ioPart.msg = new Message();
-			}	
-		}								
-	}
+		socketAcceptor = new MySocketAcceptor(serverChannel, this);		
+		socketAcceptor.start();
 		
-	private void handleMessage(Message msg) {										
-		System.out.printf("%3d_%d. Read: %s%n", readNum.incrementAndGet(), msg.client, msg);		
 		
-		//add to working queue for further processing
-		try {
-			workQueue.put(msg);  //blocking
-		} catch (InterruptedException e) {
-			throw new RuntimeException(e);
+		inSelectors = new InSelector[ioThreadsNum];
+		outSelectors = new OutSelector[ioThreadsNum];
+		
+		for (int i = 0; i < ioThreadsNum; i ++) {
+			inSelectors[i] = new InSelector(this, i);						
+			inSelectors[i].start();
 		}
-	}
-	
-	public void init() {
 		
-		System.out.printf("Working threads: %d%n", workThreads);
+		for (int i = 0; i < ioThreadsNum; i ++) {
+			outSelectors[i] = new OutSelector(this, i);
+			outSelectors[i].start();
+		}
+		
+		
+		
 		
 		ThreadFactory threadFactory = new ThreadFactory() {
 			final AtomicInteger threadNumber = new AtomicInteger(0);
@@ -238,7 +124,7 @@ public class MyServer implements Runnable {
 			}
 		};
 		
-		ExecutorService executors = Executors.newFixedThreadPool(workThreads, threadFactory);
+		ExecutorService executors = Executors.newFixedThreadPool(workThreadsNum, threadFactory);
 		executors.execute(new Runnable() {			
 			@Override
 			public void run() {
@@ -258,23 +144,36 @@ public class MyServer implements Runnable {
 				}				
 			}
 		});
-	}
-
-	public void exec() {
-		init();
 		
-		Thread t = new Thread(this);
-		t.start();
-		
+		//TODO: remove
 		try {
-			t.join();
+			Thread.sleep(100000);
 		} catch (InterruptedException e) {
-			 /* ignore */
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
-		
 	}
 	
-	public static void main(String[] args) {
+	//called only by 1 thread
+	public void onNewConnection(SocketChannel socketChannel) throws IOException {
+		InSelector inSelector = inSelectors[(inSelectorsPos ++) % inSelectors.length];
+		OutSelector outSelector = outSelectors[(outSelectorsPos ++) % outSelectors.length];
+		
+		inSelector.register(socketChannel);
+		outSelector.register(socketChannel);
+	}
+	
+	//called by multiple InSelectors
+	public void handleMessage(Message msg) {																
+		//add to working queue for further processing
+		try {
+			workQueue.put(msg);  //blocking
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+	}
+	
+	public static void main(String[] args) throws Exception {
 		MyServer server = new MyServer();
 		server.exec();
 	}

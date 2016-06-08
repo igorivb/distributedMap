@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 //read and write. Connect to one server.
 public class MyClient {
 	
+	//TODO: default: 2
 	final int clientThreads = 1;
 	
 	final AtomicInteger readNum = new AtomicInteger();
@@ -28,7 +29,7 @@ public class MyClient {
 	//messages to process (send to server)
 	private BlockingQueue<Message> writeQueue = new ArrayBlockingQueue<>(10);
 			
-	final AtomicInteger correlationIds = new AtomicInteger(1);
+	final AtomicInteger correlationIds = new AtomicInteger(0);
 	
 	void generateRequests() {													
 		ExecutorService executorService = Executors.newFixedThreadPool(clientThreads);
@@ -226,8 +227,11 @@ public class MyClient {
 	}
 	
 	public static void main(String[] args) throws Exception {
-		MyClient client = new MyClient();
-		client.exec();
+		MyClient client1 = new MyClient();
+		client1.exec();
+		
+//		MyClient client2 = new MyClient();
+//		client2.exec();
 	}
 
 }
