@@ -1,3 +1,63 @@
 1. server should remember to which client to send response.
 Now I get error when I send response to client that didn't provide me this message.
  
+2. Is correlation id unique between all clients? 
+ 
+---------------
+
+1. create correct design and implement it															TODO
+
+- e.g. with Connections and ConnectionManager where we can have different implementations of Connection, e.g. for testing
+
+	- what is interface of ConnectionManager ?
+	
+	- what is interface of Connection ?
+	
+	- use methods of ConnectionManager, Connection from interface
+	
+	- io classes must not depend on MyServer.
+	MyServer is just coordinator 
+
+
+- split classes to client and server packages
+
+
+ 
+ 
+---------------------------------------------------------------------
+---------------------------------------------------------------------
+
+
+Relation between Message and Connection
+correlationId is not enough because it is not unique
+
+solutions:
+1. generate serverCorrelationId - No
+
+2. Message should have reference to Connection
+one connection handles multiple input and output messages 
+
+
+
+ 
+ 
+----------- Hazelcast
+
+ConnectionManager has several in and out selectors
+
+e.g. see MapGetRequest
+
+
+
+WriteHandler (implements SelectionHandler) has 1 to 1 to Connection
+
+- server reading part
+
+	ClientRequest
+	CallableClientRequest
+
+	ClientEngineImpl
+		#handlePacket
+		
+- server writing part:
+	WriteHandler writes Packet

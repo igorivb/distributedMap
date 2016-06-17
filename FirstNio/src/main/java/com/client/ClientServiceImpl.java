@@ -1,4 +1,4 @@
-package com;
+package com.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -17,6 +17,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.log4j.Logger;
+
+import com.Message;
+import com.MessageResponse;
+import com.server.MyServer;
 
 /*
  * Read and write. Connect to one server.
@@ -37,8 +41,8 @@ public class ClientServiceImpl implements ClientService {
 	private BlockingQueue<Message> writeQueue = new ArrayBlockingQueue<>(10);
 			
 	
-	//useb by all clients, as correlationIds are unique for all clients
-	static final AtomicInteger correlationIds = new AtomicInteger(0);
+	//correlationIds are unique only per particular client
+	final AtomicInteger correlationIds = new AtomicInteger(0);
 
 	Map<Integer, ResponseFuture> correlations = new ConcurrentHashMap<>();
 	
@@ -89,7 +93,7 @@ public class ClientServiceImpl implements ClientService {
 	}
 		
 	private void handleMessageResponse(MessageResponse msg) {										
-		logger.info(String.format("%3d_%d. Read: %s%n", readNum.incrementAndGet(), msg.client, msg));		
+		logger.info(String.format("%3d_%d. Read: %s", readNum.incrementAndGet(), msg.client, msg));		
 		
 		ResponseFuture future = correlations.get(msg.correlationId);
 		if (future == null) {
@@ -109,7 +113,7 @@ public class ClientServiceImpl implements ClientService {
 		int byteRead = socketChannel.read(buf);
 		
 		if (byteRead == -1) { //eof										
-			System.out.println("Closed connection to: " + socketChannel.getRemoteAddress());
+			logger.info("Closed connection to: " + socketChannel.getRemoteAddress());
 			
 			key.cancel();
 			socketChannel.close();		
@@ -131,7 +135,7 @@ public class ClientServiceImpl implements ClientService {
 			if (isFull) { //message is full: start processing and create new one
 				handleMessageResponse(ioPart.msg);
 				
-				ioPart.msg = new MessageResponse();
+				ioPart.msg = new MessageResponse(null);
 			}	
 		}								
 	}
@@ -174,7 +178,7 @@ public class ClientServiceImpl implements ClientService {
 		
 									
 		if (isFull) { //message was sent, prepare for new one
-			logger.info(String.format("%3d_%d. Sent: %s%n", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg));
+			logger.info(String.format("%3d_%d. Sent: %s", writeNum.incrementAndGet(), ioPart.msg.client, ioPart.msg));
 			
 			ioPart.msg = null;						
 		}				
@@ -212,7 +216,7 @@ public class ClientServiceImpl implements ClientService {
 		OutputPart writePart = new OutputPart();
 		selectionWrapper.writePart = writePart;
 		writePart.buf = ByteBuffer.allocate(12);
-		writePart.msg = new MessageResponse();
+		writePart.msg = new MessageResponse(null);
 		
 		key.attach(selectionWrapper);		
 		
@@ -236,7 +240,7 @@ public class ClientServiceImpl implements ClientService {
 	@Override
 	public int add(int n1, int n2) {
 		try {
-			Message msg = new Message(n1, n2, clientNum, correlationIds.incrementAndGet());
+			Message msg = new Message(n1, n2, clientNum, correlationIds.incrementAndGet(), null);
 			
 			Future<MessageResponse> fResponse = handleMessage(msg);
 			MessageResponse response = fResponse.get(); //blocking to emulate sync call		

@@ -1,4 +1,4 @@
-package com;
+package com.client;
 
 import java.util.Random;
 
@@ -38,7 +38,7 @@ public class ClientDriver {
 					
 					int res = clientService.add(n1, n2);
 					
-					logger.info(String.format("Calc. Client %2d: %d + %d = %d%n", clientNum, n1, n2, res));
+					logger.info(String.format("Calc. Client %2d: %d + %d = %d", clientNum, n1, n2, res));
 					
 					//wait some time between requests
 					Thread.sleep(rand.nextInt(1000) + 100);

@@ -2,8 +2,13 @@ package com;
 
 import java.nio.ByteBuffer;
 
+import com.io.MyConnection;
+
 public class MessageResponse {
 
+	public final MyConnection con; 
+	
+	
 	public int result;
 	
 	public int client;
@@ -16,13 +21,17 @@ public class MessageResponse {
 	//in order to track reading
 	private int readNum = 0;
 
-	public MessageResponse() { }
+	public MessageResponse(MyConnection con) {
+		this.con = con;
+	}
 	
-	public MessageResponse(int result, int client, int correlationId) {
+	public MessageResponse(int result, int client, int correlationId, MyConnection con) {
 		super();
 		this.result = result;
 		this.client = client;
 		this.correlationId = correlationId;
+		
+		this.con = con;
 	}
 
 	/**
@@ -103,5 +112,6 @@ public class MessageResponse {
 	public String toString() {
 		return "MessageResponse [result=" + result + ", client=" + client
 				+ ", correlationId=" + correlationId + "]";
-	}	
+	}
+
 }

@@ -1,4 +1,4 @@
-package com;
+package com.io.tcp;
 
 import java.io.IOException;
 import java.nio.channels.SelectionKey;
@@ -8,16 +8,23 @@ import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
+import org.apache.log4j.Logger;
+
 public class MySocketAcceptor extends Thread {
 
-	private final ServerSocketChannel serverChannel;
-	private final MyServer server;
+	private final static Logger logger = Logger.getLogger(MySocketAcceptor.class);
 	
-	public MySocketAcceptor(ServerSocketChannel serverChannel, MyServer server) {
+	private final ServerSocketChannel serverChannel;
+	
+	
+	private final MyTcpConnectionManager connectionManager;
+	
+	public MySocketAcceptor(ServerSocketChannel serverChannel, MyTcpConnectionManager connectionManager) {
 		super("accept-selector");
 		
 		this.serverChannel = serverChannel;
-		this.server = server;
+	
+		this.connectionManager = connectionManager;
 	}
 	
 	@Override
@@ -53,9 +60,10 @@ public class MySocketAcceptor extends Thread {
 		socketChannel.configureBlocking(false);
 		//TODO socketChannel.setOption(name, value)
 		
-		System.out.println("Accept client connection: " + socketChannel.getRemoteAddress());
+		logger.info("Accept client connection: " + socketChannel.getRemoteAddress());
 		
-		server.onNewConnection(socketChannel);						
+		MyTcpConnection con = new MyTcpConnection(socketChannel, connectionManager);		
+		connectionManager.registerConnection(con);						
 	}		
 
 }
